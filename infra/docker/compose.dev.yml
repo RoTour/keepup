@@ -1,6 +1,6 @@
 # keepup — local development backing services.
 #
-# Backing services ONLY: Postgres, RabbitMQ, MailHog.
+# Backing services ONLY: Postgres, RabbitMQ, Mailpit.
 # The `app` and `migrate` services are deliberately absent — they are owned by
 # the slice that introduces the Dockerfiles and will be added here later.
 #
@@ -68,23 +68,22 @@ services:
       retries: 10
       start_period: 20s
 
-  mailhog:
-    image: mailhog/mailhog
-    # mailhog/mailhog publishes a single-architecture (amd64) manifest — there is
-    # no arm64 variant, so on Apple Silicon it runs under emulation. It is a small
-    # static Go binary and emulates fine. Pinning the platform explicitly keeps the
-    # pull deterministic and silences the runtime mismatch warning.
-    # If the emulation ever becomes a nuisance, axllent/mailpit is the maintained,
-    # multi-arch, drop-in replacement (same 1025/8025 ports).
-    platform: linux/amd64
-    container_name: keepup-mailhog
+  mailpit:
+    image: axllent/mailpit
+    # Mailpit, not MailHog. MailHog is archived upstream and ships an amd64-only
+    # manifest, so it would run under emulation here. Mailpit is maintained, is
+    # multi-arch (native arm64), and is a drop-in on the same 1025/8025 ports.
+    # Deliberately no `platform:` override — this must resolve natively.
+    container_name: keepup-mailpit
     restart: unless-stopped
     ports:
-      - "${MAILHOG_SMTP_PORT:-1025}:1025" # SMTP sink
-      - "${MAILHOG_UI_PORT:-8025}:8025"   # web UI
+      - "${MAILPIT_SMTP_PORT:-1025}:1025" # SMTP sink
+      - "${MAILPIT_UI_PORT:-8025}:8025"   # web UI
     healthcheck:
-      # No curl in the image; busybox wget is present.
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8025/"]
+      # Mailpit ships a first-class healthcheck subcommand (verified: exit 0 when
+      # serving, exit 1 when not). Preferred over probing a hardcoded URL with
+      # wget, because it honours Mailpit's own bind address and webroot config.
+      test: ["CMD", "/mailpit", "readyz"]
       interval: 10s
       timeout: 5s
       retries: 5
