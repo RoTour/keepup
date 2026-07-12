@@ -3,6 +3,7 @@ package keepup;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
+import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
@@ -149,20 +150,38 @@ class ArchitectureTest {
                 .areInterfaces()
                 .and()
                 .areNotAnnotations()
+                // Platform is IN scope: platform exposes ports too (ILockRegistry, ...) and
+                // they must not drift onto a different naming convention than the contexts'.
                 .and()
-                .resideInAnyPackage(AUTHORING, DELIVERY, IDENTITY)
+                .resideInAnyPackage(AUTHORING, DELIVERY, IDENTITY, PLATFORM)
                 .and()
                 .resideOutsideOfPackage(ADAPTER)
                 .and()
                 .areNotAnnotatedWith(FunctionalInterface.class)
+                // A `sealed` interface is a domain SUM TYPE (e.g. a Verdict with a fixed set
+                // of variants), not a hexagon boundary. Forcing it to be named I... would be
+                // wrong. This is the idiomatic Java 21 domain-modelling case, so exempt it.
+                .and(DescribedPredicate.not(areSealed()))
                 .should(haveAPortName())
                 .because(
                         "an interface sitting directly in a feature package IS a port — a "
                             + "boundary of the hexagon — and the house convention names it "
                             + "I{Context}{Type}, e.g. IQuizRepository, IEvaluationWorkQueue. "
-                            + "Annotations and @FunctionalInterface lambda helpers are exempt.");
+                            + "Sealed interfaces (domain sum types), annotations and "
+                            + "@FunctionalInterface lambda helpers are NOT ports and are exempt.");
 
         check(rule);
+    }
+
+    /**
+     * True for a {@code sealed} interface. ArchUnit 1.4.2 does not model sealedness
+     * ({@code JavaModifier} has no SEALED constant, {@code JavaClass} has no
+     * {@code isSealed}), so we reflect the actual class and ask {@link Class#isSealed()}.
+     * Safe here: the predicate only ever runs against keepup's own interfaces, which are
+     * on the test classpath, and the build always runs on JDK 21 where the method exists.
+     */
+    private static DescribedPredicate<JavaClass> areSealed() {
+        return DescribedPredicate.describe("sealed", javaClass -> javaClass.reflect().isSealed());
     }
 
     /**

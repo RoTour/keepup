@@ -35,9 +35,14 @@ tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.compilerArgs.addAll(
         listOf(
-            // `-processing` is off: we ship no annotation processors, and javac warns
-            // when a processor path is present but nothing claims an annotation.
-            "-Xlint:all,-processing",
+            // `-processing`: we ship no annotation processors, and javac warns when a
+            //   processor path is present but nothing claims an annotation.
+            // `-this-escape`: fires when a constructor calls an overridable method. That
+            //   is pervasive and idiomatic in Spring @Configuration/@Component classes
+            //   (arriving from S0.9 onward) and in adapters. Left on, -Werror would hard-
+            //   fail the first adapter and train everyone to reach for @SuppressWarnings.
+            //   Dropping it keeps -Werror meaningful for warnings that actually indicate bugs.
+            "-Xlint:all,-processing,-this-escape",
             "-Werror",
         ),
     )
