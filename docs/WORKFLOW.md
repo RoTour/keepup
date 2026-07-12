@@ -140,7 +140,24 @@ green and a coherent unit of work is complete — at minimum, every milestone's 
 
 - `master`: no direct pushes; fast-forward-only from `staging`; required checks green.
 - `staging`: no direct pushes; PR required; squash-merge only (linear history); required checks
-  `backend-test`, `frontend-test`, `secrets-scan`.
+  `backend-test`, `frontend-test`, `raw-html-gate`, `secrets-scan`.
+
+**The path-filter trap — decide this when configuring the required checks.** `backend-test`,
+`frontend-test` and `raw-html-gate` are `paths:`-filtered (they only run when their area changes).
+A GitHub *required* check that never triggers is stuck as "Expected — waiting" and blocks the PR
+**forever** — so a docs-only PR (an ADR, a plan edit) would never merge. `secrets-scan` is not
+path-filtered and is always safe to require directly. Two ways to make the other three safe to
+require:
+- **Preferred (do at S0.10 or first idle moment): one aggregate check.** Consolidate the four PR
+  gates into a single `pr-checks.yml` where each job self-filters (`dorny/paths-filter`) and a final
+  `all-checks-passed` job `needs:` them with `if: always()`, failing on any `failure`/`cancelled`,
+  passing on `skipped`. Require only `all-checks-passed`. One stable check name, "not applicable =
+  pass" semantics, and adding gates in later milestones never touches branch-protection config again.
+- **Zero-restructure fallback:** drop the workflow-level `paths:` filters from the three gates, so
+  they always run and always report. Costs one `gradlew build` / `npm ci` per docs-only PR.
+
+Do **not** mark a path-filtered check as required while its filter remains — that is the exact
+configuration that hangs PRs.
 
 ---
 
