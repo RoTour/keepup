@@ -62,8 +62,17 @@ module.exports = defineConfig([
           message: HTML_SINK_MESSAGE,
         },
         {
-          // sanitizer.bypassSecurityTrustHtml(...)
-          selector: 'CallExpression > MemberExpression[property.name="bypassSecurityTrustHtml"]',
+          // sanitizer.bypassSecurityTrust{Html,Script,Style,Url,ResourceUrl}(...)
+          // Every bypass sibling is banned, not just the Html one:
+          // bypassSecurityTrustResourceUrl feeding an iframe [src] is arguably worse.
+          selector:
+            'CallExpression > MemberExpression[property.name=/^bypassSecurityTrust(Html|Script|Style|Url|ResourceUrl)$/]',
+          message: HTML_SINK_MESSAGE,
+        },
+        {
+          // sanitizer.sanitize(SecurityContext.NONE, x) — NONE means "trust as-is",
+          // the same escape hatch by another name.
+          selector: 'MemberExpression[object.name="SecurityContext"][property.name="NONE"]',
           message: HTML_SINK_MESSAGE,
         },
         {
