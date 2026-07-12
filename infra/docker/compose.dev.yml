@@ -1,8 +1,8 @@
 # keepup — local development stack.
 #
-# Backing services (Postgres, RabbitMQ, Mailpit) plus the application (`app`).
-# The `migrate` service is deliberately absent — it runs Flyway and is owned by
-# the migration slice, which will add it here later.
+# Backing services (Postgres, RabbitMQ, Mailpit), a one-shot `migrate` service
+# that applies the Flyway schema, and the application (`app`). On `up` the order
+# is: postgres healthy -> migrate runs to completion -> app starts.
 #
 # Usage:  cp .env.example .env && docker compose -f compose.dev.yml up -d
 # See README.md.
@@ -104,6 +104,51 @@ services:
       retries: 5
       start_period: 5s
 
+  migrate:
+    # One-shot Flyway migration. Runs `flyway migrate` against Postgres, applies
+    # every pending V*.sql, then EXITS 0 — it is not a long-running service, so it
+    # has no healthcheck and no restart policy (a `restart` would re-run it in a
+    # loop). The app never carries Flyway or a JDBC driver on its own classpath for
+    # M0; migrations are this container's job alone (ADR-0022 keeps Flyway the
+    # schema owner without coupling it to the DB-free app).
+    #
+    # Pinned to 12.4.0 to match the app's future BOM-managed Flyway 12.x. This tag
+    # is native linux/arm64 (verified by pull + image inspect on this arm64 Mac),
+    # so it runs without emulation.
+    image: flyway/flyway:12.4.0
+    container_name: keepup-migrate
+    command: migrate
+    environment:
+      # DB creds reuse the SAME non-secret dev vars Postgres uses — no new secret.
+      # Host is the compose service name `postgres` on the internal network.
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      FLYWAY_USER: ${POSTGRES_USER}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD}
+      # Keep flyway_schema_history in its OWN schema, never `public`. On the Supabase
+      # production Postgres, `public` is the schema PostgREST auto-exposes over the
+      # REST API — a history table there would be publicly queryable on this
+      # build-in-public repo. It is also the odd-one-out in a schema-per-context
+      # layout. With Flyway's default createSchemas=true, this creates the `flyway`
+      # schema and puts the history table there.
+      # COORDINATION: M1's app-side Flyway MUST set `spring.flyway.default-schema:
+      # flyway` so both Flyway configs point at the SAME history table. If they
+      # disagree, the app's `validate` sees an empty history and fails at boot.
+      FLYWAY_DEFAULT_SCHEMA: flyway
+      # Set the locations explicitly. The bare `sql` default triggers a Flyway
+      # "may be deprecated" warning; naming it silences that and future-proofs.
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      # postgres is already gated healthy below; the retries are a cheap belt against
+      # the brief window between "accepting connections" and "ready for DDL".
+      FLYWAY_CONNECT_RETRIES: "10"
+    volumes:
+      # The classpath migration dir (backend/app/.../db/migration) mounted read-only
+      # at FLYWAY_LOCATIONS (filesystem:/flyway/sql). Same files M1's app-side Flyway
+      # will validate JPA against — one source of truth.
+      - ../../backend/app/src/main/resources/db/migration:/flyway/sql:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   app:
     # ONE image, three roles. Here it runs as `web`; worker/relay are the same
     # artifact with a different KEEPUP_ROLES. Build context is the repo ROOT so the
@@ -126,6 +171,11 @@ services:
       # `service_healthy` means schemas are already created (see the healthcheck).
       postgres:
         condition: service_healthy
+      # And the schema must be migrated before any DB-touching role boots. These
+      # conditions apply on `up`, not `restart` (which is correct: a bare app
+      # restart should not re-block on a one-shot that already finished).
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       # busybox wget ships in the alpine base — no extra tooling added to the image.
       # /actuator/health returns UP in every role once the context is up.
