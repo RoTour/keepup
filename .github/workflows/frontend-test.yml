@@ -1,0 +1,53 @@
+# frontend-test - PR gate for the Angular frontend.
+#
+# Node version comes from frontend/.nvmrc (24.18.0). `engine-strict=true` in
+# frontend/.npmrc means npm enforces the engines floor, so CI must run a Node
+# that satisfies it - setup-node reads .nvmrc so CI and contributors agree.
+#
+# pull_request only: no credentials; gates merges into the integration branches.
+name: frontend-test
+
+on:
+  pull_request:
+    branches: [staging, master]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-test.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: frontend
+
+jobs:
+  frontend-test:
+    runs-on: ubuntu-latest
+    steps:
+      # Actions are SHA-pinned (supply-chain hardening); the trailing version
+      # comment lets Dependabot bump the pin. Do not replace with a bare tag.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up Node from .nvmrc
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install (clean, lockfile-exact)
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests (headless)
+        run: npm test
+
+      - name: Production build
+        run: npm run build

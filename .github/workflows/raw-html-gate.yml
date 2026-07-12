@@ -1,0 +1,44 @@
+# raw-html-gate - PR gate against DOM-XSS sinks in the frontend source.
+#
+# This guards the ONE place attacker-controlled, LLM-extracted text can reach a
+# trainer's browser. It is DELIBERATELY a grep (scripts/check-raw-html.sh), not
+# an ESLint rule: a lint rule is silenceable from inside the file it guards (an
+# inline eslint-disable) and dodgeable by AST evasion. The grep cannot be turned
+# off from within the scanned source. See the script header for the full
+# rationale. The same script runs locally: `scripts/check-raw-html.sh`.
+#
+# pull_request only: no credentials.
+name: raw-html-gate
+
+on:
+  pull_request:
+    branches: [staging, master]
+    paths:
+      - 'frontend/**'
+      - 'scripts/check-raw-html.sh'
+      - 'scripts/check-raw-html.test.sh'
+      - '.github/workflows/raw-html-gate.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  raw-html-gate:
+    runs-on: ubuntu-latest
+    steps:
+      # Actions are SHA-pinned (supply-chain hardening); the trailing version
+      # comment lets Dependabot bump the pin. Do not replace with a bare tag.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      # Fixture tests pin the gate's guarantees (fail-closed on error, no binary
+      # skip, whitespace evasion caught, documented obfuscation limit). If the
+      # gate is ever weakened, these fail here before the scan even runs.
+      - name: Self-test the gate
+        run: bash scripts/check-raw-html.test.sh
+
+      - name: Scan frontend/src for raw-HTML / trust-bypass sinks
+        run: bash scripts/check-raw-html.sh frontend/src

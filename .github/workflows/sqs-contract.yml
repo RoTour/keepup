@@ -1,0 +1,56 @@
+# sqs-contract - AWS SQS contract tests (OIDC plumbing scaffold).
+#
+# ============================ SECURITY GATE ============================
+# The repo is PUBLIC. This job assumes an AWS role via GitHub OIDC, so it MUST
+# NOT be exposed to untrusted code:
+#   * Triggers on `push` and `workflow_dispatch` ONLY - never `pull_request`.
+#   * NEVER use `pull_request_target` - it would hand fork code the ability to
+#     assume our AWS role.
+# The SQS role's trust policy scopes its subject to
+#   repo:RoTour/keepup:environment:ci
+# so this job MUST declare `environment: ci` and `id-token: write`, otherwise
+# the OIDC subject will not match and the AssumeRole is denied.
+# ======================================================================
+#
+# STATUS: scaffold only. The contract suite arrives in M3 and the SQS queue is
+# provisioned in S0.10. Until CI_ROLE_ARN is set as a repository variable this
+# job SKIPS - the plumbing is here to be reviewed now, not to invent a test.
+name: sqs-contract
+
+on:
+  push:
+    branches: [staging, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sqs-contract:
+    # Skip gracefully until the AWS role is configured (S0.10).
+    if: ${{ vars.CI_ROLE_ARN != '' }}
+    runs-on: ubuntu-latest
+    environment: ci          # matches the OIDC trust-policy subject
+    permissions:
+      id-token: write        # required to request the OIDC token
+      contents: read
+    steps:
+      # Actions are SHA-pinned (supply-chain hardening); the trailing version
+      # comment lets Dependabot bump the pin. This job can mint AWS credentials
+      # via OIDC, so a hijacked action tag is a credential-theft surface -
+      # pinning to a commit removes it.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Configure AWS credentials (OIDC, no long-lived key)
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ vars.CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Placeholder. Replace with the real contract suite in M3.
+      - name: Run SQS contract suite
+        run: echo "contract suite lands in M3"

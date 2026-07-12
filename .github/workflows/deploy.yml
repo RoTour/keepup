@@ -1,0 +1,62 @@
+# deploy - trigger a Coolify deploy (scaffold).
+#
+# ============================ SECURITY GATE ============================
+# The repo is PUBLIC. This job uses a deploy secret, so it MUST NOT be exposed
+# to untrusted code:
+#   * Triggers on `push` and `workflow_dispatch` ONLY - never `pull_request`.
+#   * NEVER use `pull_request_target`.
+# ======================================================================
+#
+# STATUS: scaffold only. The webhook URL/token mechanics are an UNRESOLVED open
+# item owned by S0.10 - nothing is hardcoded here. The job is a NO-OP until the
+# COOLIFY_DEPLOY_URL var + COOLIFY_DEPLOY_TOKEN secret exist: unconfigured, the
+# deploy step is skipped and the pipeline stays green (an unconfigured deploy
+# must not fail the build).
+#
+# Secret shape: the token is passed as an Authorization header, NOT baked into
+# the URL argument. A URL on the command line is visible via `ps` and can leak
+# in a curl resolve-error message; a bearer header avoids both. When S0.10 wires
+# the real Coolify contract the safe shape is already in place.
+#
+# The values are read into job env vars because the `secrets` context is not
+# available in `if:` conditions; step-level `if:` can read `env`.
+name: deploy
+
+on:
+  push:
+    branches: [staging, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false   # never cancel an in-flight deploy
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      # Non-secret endpoint as a repo variable; the credential as a secret.
+      COOLIFY_DEPLOY_URL: ${{ vars.COOLIFY_DEPLOY_URL }}
+      COOLIFY_DEPLOY_TOKEN: ${{ secrets.COOLIFY_DEPLOY_TOKEN }}
+    steps:
+      # Real path, active once S0.10 sets the var + secret. curl -f => non-2xx
+      # fails the step. -sS keeps it quiet but still surfaces errors; NO -v (a
+      # verbose dump would echo the Authorization header).
+      - name: Trigger Coolify deploy
+        if: ${{ env.COOLIFY_DEPLOY_URL != '' }}
+        run: |
+          echo "Triggering Coolify deploy for ${{ github.sha }} ..."
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $COOLIFY_DEPLOY_TOKEN" \
+            "$COOLIFY_DEPLOY_URL"
+
+      # No-op path while unconfigured. Documents what S0.10 must wire.
+      - name: Deploy not configured (skipping)
+        if: ${{ env.COOLIFY_DEPLOY_URL == '' }}
+        run: |
+          echo "COOLIFY_DEPLOY_URL is not set - deploy is a no-op."
+          echo "S0.10 will add vars.COOLIFY_DEPLOY_URL + secrets.COOLIFY_DEPLOY_TOKEN"
+          echo "and finalise the webhook contract."

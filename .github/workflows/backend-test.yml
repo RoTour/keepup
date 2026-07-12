@@ -1,0 +1,50 @@
+# backend-test - PR gate for the Gradle/Spring backend.
+#
+# `./gradlew build` compiles every module AND runs the ArchUnit suite in
+# :backend:app. There are no Testcontainers tests yet (they arrive with the
+# adapters), so a plain `build` is the whole gate.
+#
+# pull_request only: this job carries no credentials and gates merges into the
+# integration branches.
+name: backend-test
+
+on:
+  pull_request:
+    branches: [staging, master]
+    paths:
+      - 'backend/**'
+      - 'build-logic/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/workflows/backend-test.yml'
+
+# Cancel superseded runs for the same PR/branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    steps:
+      # Actions are SHA-pinned (supply-chain hardening); the trailing version
+      # comment lets Dependabot bump the pin. Do not replace with a bare tag.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      # Temurin 21 so the Gradle toolchain does not have to auto-download a JDK
+      # in CI. `cache: gradle` restores ~/.gradle across runs.
+      - name: Set up JDK 21
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Build (compiles all modules + runs ArchUnit)
+        run: ./gradlew build --no-daemon --console=plain
