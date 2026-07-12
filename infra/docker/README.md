@@ -60,6 +60,13 @@ docker compose -f compose.dev.yml down -v  # stop and delete data
 
 ## Notes
 
+- **Ports bind to loopback only** (`BIND_ADDR=127.0.0.1`). `localhost:5432` and
+  friends work as normal, but nothing is reachable from the LAN — these services
+  carry weak dev credentials and the Mailpit UI has none. To expose the stack to
+  your network on purpose, set `BIND_ADDR=0.0.0.0` in `.env`.
+- **All images are pinned** to concrete tags (`postgres:15.8-alpine`,
+  `rabbitmq:4-management-alpine`, `axllent/mailpit:v1.30.4`) so a fresh pull can
+  never silently swap an image.
 - **Postgres is pinned to 15.8** to match production (Supabase
   `supabase/postgres:15.8.1.085`). Dev, Testcontainers and prod must run the same
   Postgres. Do not bump it here alone.
@@ -68,7 +75,9 @@ docker compose -f compose.dev.yml down -v  # stop and delete data
   maintained, multi-arch (native on arm64) and a drop-in on the same ports. Every
   image in this stack runs natively — there is no `platform:` override anywhere.
 - **RabbitMQ uses an explicit user, not `guest`.** This is deliberate; see the
-  comment in `compose.dev.yml` before changing it.
+  comment in `compose.dev.yml` before changing it. Its healthcheck uses
+  `check_port_connectivity`, which covers the management UI port (15672), not just
+  the Erlang VM.
 - The stack uses the compose project name `keepup-dev`, so its network and
   volumes will not collide with other stacks on your machine.
 - If a port collides with something already on your machine (5432 is a common

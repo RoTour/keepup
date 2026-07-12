@@ -24,7 +24,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Bind published ports to loopback by default. Without the ${BIND_ADDR}
+      # prefix, Docker publishes on 0.0.0.0, so on untrusted Wi-Fi any device on
+      # the segment could reach this database as keepup/keepup. localhost still
+      # works exactly as before; LAN exposure is a conscious BIND_ADDR=0.0.0.0
+      # opt-in. This is a public build — the default must be safe.
+      - "${BIND_ADDR:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Schemas only. Table DDL belongs to Flyway, not here.
@@ -57,28 +62,38 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
       # Default vhost "/" is fine for dev.
     ports:
-      - "${RABBITMQ_PORT:-5672}:5672"      # AMQP
-      - "${RABBITMQ_UI_PORT:-15672}:15672" # management UI
+      # Loopback-only by default — see the postgres ports comment. The management
+      # UI in particular exposes a full administrator; it must not reach the LAN.
+      - "${BIND_ADDR:-127.0.0.1}:${RABBITMQ_PORT:-5672}:5672"      # AMQP
+      - "${BIND_ADDR:-127.0.0.1}:${RABBITMQ_UI_PORT:-15672}:15672" # management UI
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      # check_port_connectivity does a TCP check on EVERY listener's port,
+      # including the management HTTP listener on 15672. Plain `ping` only proves
+      # the Erlang VM answers — it would report healthy even if the management UI
+      # (the M2 demo criterion) were not accepting connections.
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
       interval: 10s
       timeout: 10s
       retries: 10
       start_period: 20s
 
   mailpit:
-    image: axllent/mailpit
+    image: axllent/mailpit:v1.30.4
     # Mailpit, not MailHog. MailHog is archived upstream and ships an amd64-only
     # manifest, so it would run under emulation here. Mailpit is maintained, is
     # multi-arch (native arm64), and is a drop-in on the same 1025/8025 ports.
     # Deliberately no `platform:` override — this must resolve natively.
+    # Pinned to a concrete tag (like postgres/rabbitmq) so a fresh pull cannot
+    # silently swap the image out from under us.
     container_name: keepup-mailpit
     restart: unless-stopped
     ports:
-      - "${MAILPIT_SMTP_PORT:-1025}:1025" # SMTP sink
-      - "${MAILPIT_UI_PORT:-8025}:8025"   # web UI
+      # Loopback-only by default — see the postgres ports comment. Captured dev
+      # mail is readable on the UI without auth; keep it off the LAN.
+      - "${BIND_ADDR:-127.0.0.1}:${MAILPIT_SMTP_PORT:-1025}:1025" # SMTP sink
+      - "${BIND_ADDR:-127.0.0.1}:${MAILPIT_UI_PORT:-8025}:8025"   # web UI
     healthcheck:
       # Mailpit ships a first-class healthcheck subcommand (verified: exit 0 when
       # serving, exit 1 when not). Preferred over probing a hardcoded URL with
