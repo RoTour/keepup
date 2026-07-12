@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # keepup backend — ONE image, three roles (web / worker / relay).
 #
 # The role is chosen at RUNTIME by the KEEPUP_ROLES env var, never baked in. This
@@ -16,6 +17,8 @@
 # and ships JDK 21, which the keepup.java toolchain requires.
 FROM gradle:9.6.1-jdk21 AS build
 WORKDIR /workspace
+# Pin the Gradle home so it matches the BuildKit cache mount below.
+ENV GRADLE_USER_HOME=/root/.gradle
 
 # Copy ONLY what `:backend:app:bootJar` reads. Ordered stable-first for layer cache.
 COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts ./
@@ -28,14 +31,18 @@ COPY backend/ backend/
 # Spring Boot 4.1 'tools' jarmode. --layers --launcher yields the canonical split:
 #   dependencies/ spring-boot-loader/ snapshot-dependencies/ application/
 # Verified against Boot 4.1.0: Main-Class is org.springframework.boot.loader.launch.JarLauncher.
-RUN set -eu; \
+# The cache mount keeps the Gradle module/wrapper cache across builds (it is NOT baked
+# into the image), so a source-only edit does not re-download every dependency.
+RUN --mount=type=cache,target=/root/.gradle set -eu; \
     ./gradlew :backend:app:bootJar --no-daemon; \
     jar="$(find backend/app/build/libs -name '*.jar' ! -name '*-plain.jar')"; \
     cp "$jar" app.jar; \
     java -Djarmode=tools -jar app.jar extract --layers --launcher --destination extracted
 
 # ---- Stage 2: minimal, non-root runtime -------------------------------------
-FROM eclipse-temurin:21-jre-alpine AS runtime
+# Pinned to a concrete version (not the floating 21-jre-alpine), like the compose
+# backing services, so a fresh pull cannot silently swap the runtime out.
+FROM eclipse-temurin:21.0.11_10-jre-alpine AS runtime
 
 # A non-root, no-login system user. The app writes nothing but Tomcat's temp dir
 # (under /tmp, world-writable), so no owned writable volume is needed.

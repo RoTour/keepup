@@ -8,19 +8,21 @@ import java.lang.annotation.Target;
 import org.springframework.context.annotation.Conditional;
 
 /**
- * Registers the annotated bean only when the given runtime role is active.
+ * Registers the annotated bean only when one of the given runtime {@link Role}s is active.
  *
- * <p>keepup ships as a single Spring Boot artifact that runs as one or more
- * <em>roles</em> — {@code web}, {@code worker}, {@code relay} — chosen at boot by the
+ * <p>keepup ships as a single Spring Boot artifact that runs as one or more roles —
+ * {@link Role#WEB}, {@link Role#WORKER}, {@link Role#RELAY} — chosen at boot by the
  * {@code KEEPUP_ROLES} environment variable (comma-separable, e.g.
- * {@code KEEPUP_ROLES=worker,relay}). A role is a <em>duty</em> the process performs,
- * not the environment it runs in, so it is deliberately NOT a Spring profile
- * (profiles model environments). This custom condition keeps the two concepts apart.
+ * {@code KEEPUP_ROLES=worker,relay}). A role is a <em>duty</em> the process performs, not
+ * the environment it runs in, so this is a custom condition, deliberately NOT a Spring
+ * profile (profiles model environments).
  *
- * <p>Placing this on a bean type or {@code @Bean} method makes that bean exist only in
- * a process whose {@code KEEPUP_ROLES} set contains {@link #value()}.
+ * <p>The value is a set: the bean exists when the process's active roles <em>intersect</em>
+ * the declared ones. {@code @OnRole(Role.WEB)} is the one-element case; a bean shared by
+ * worker and relay is {@code @OnRole({Role.WORKER, Role.RELAY})}.
  *
  * @see OnRoleCondition
+ * @see Roles
  */
 @Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
@@ -28,6 +30,6 @@ import org.springframework.context.annotation.Conditional;
 @Conditional(OnRoleCondition.class)
 public @interface OnRole {
 
-    /** The role that must be active for the annotated bean to be registered. */
-    String value();
+    /** Role(s) that activate the bean. Registered when the active set intersects these. */
+    Role[] value();
 }

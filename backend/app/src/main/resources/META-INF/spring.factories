@@ -1,0 +1,4 @@
+# Register the KEEPUP_ROLES validator to run during environment preparation, before
+# any bean or @OnRole condition — so a typo'd role fails the boot fast.
+org.springframework.boot.EnvironmentPostProcessor=\
+  keepup.app.RolesEnvironmentPostProcessor

@@ -13,7 +13,9 @@ import org.springframework.context.annotation.Configuration;
  * <p>Each marker is an {@link ApplicationRunner} that logs {@code role active: <role>}
  * on boot, and is registered only for its role. Booting with {@code KEEPUP_ROLES=web}
  * logs the web marker alone; {@code KEEPUP_ROLES=worker,relay} logs those two and not
- * web. These are intentionally trivial: later slices attach real work to each role.
+ * web. This is the M0 "boots in all three roles" proof; later slices attach real work to
+ * each role. (The resolved role set is also announced once by
+ * {@link RolesEnvironmentPostProcessor} at startup.)
  */
 @Configuration(proxyBeanMethods = false)
 class RoleMarkers {
@@ -21,24 +23,24 @@ class RoleMarkers {
     private static final Logger log = LoggerFactory.getLogger(RoleMarkers.class);
 
     @Bean
-    @OnRole("web")
+    @OnRole(Role.WEB)
     ApplicationRunner webRoleMarker() {
-        return marker("web");
+        return marker(Role.WEB);
     }
 
     @Bean
-    @OnRole("worker")
+    @OnRole(Role.WORKER)
     ApplicationRunner workerRoleMarker() {
-        return marker("worker");
+        return marker(Role.WORKER);
     }
 
     @Bean
-    @OnRole("relay")
+    @OnRole(Role.RELAY)
     ApplicationRunner relayRoleMarker() {
-        return marker("relay");
+        return marker(Role.RELAY);
     }
 
-    private static ApplicationRunner marker(String role) {
-        return (ApplicationArguments args) -> log.info("role active: {}", role);
+    private static ApplicationRunner marker(Role role) {
+        return (ApplicationArguments args) -> log.info("role active: {}", Roles.display(role));
     }
 }

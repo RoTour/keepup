@@ -1,0 +1,33 @@
+# Build-context excludes for BOTH images. The backend and frontend builds use the
+# REPOSITORY ROOT as their context (docker build -f infra/docker/Dockerfile.* .),
+# and a .dockerignore is read from the context root — so this file, not the one
+# under infra/docker, is the one that takes effect.
+#
+# The load-bearing line is **/application-local.yml: .gitignore treats it as a local
+# secret store, and Gradle's processResources would otherwise package it straight
+# into the boot jar that ships in the PUBLIC runtime image. Scoped COPY does not stop
+# that — only excluding it from the context does.
+
+.git
+**/node_modules
+**/dist
+**/build
+**/.gradle
+**/.angular
+**/out-tsc
+**/coverage
+**/playwright-report
+**/test-results
+**/.env
+**/.env.*
+!**/.env.example
+**/application-local.yml
+**/*.pem
+**/secrets/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+**/.DS_Store
+**/*.log
+**/.idea
+**/.vscode

@@ -6,12 +6,14 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.mock.env.MockEnvironment;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
 /**
  * A role is a duty the process performs, chosen at boot by {@code KEEPUP_ROLES}. These
  * tests pin the observable outcome: which {@link OnRole}-guarded beans exist for a given
- * set of active roles, and how the raw {@code KEEPUP_ROLES} string is parsed.
+ * set of active roles, including the surprising "no real role" inputs and the
+ * multi-role (intersection) case.
  */
 @DisplayName("@OnRole selects beans by the active KEEPUP_ROLES set")
 class OnRoleConditionTest {
@@ -64,6 +66,36 @@ class OnRoleConditionTest {
     }
 
     @Test
+    @DisplayName("a delimiter-only KEEPUP_ROLES names no role and so defaults to web")
+    void delimiterOnlyDefaultsToWeb() {
+        // given a value of only commas — no real role
+        contextRunner
+                .withPropertyValues("keepup.roles=,,,")
+                // when the context is built
+                .run(context ->
+                        // then the default web node behaviour applies
+                        assertThat(context)
+                                .hasBean("webRoleMarker")
+                                .doesNotHaveBean("workerRoleMarker")
+                                .doesNotHaveBean("relayRoleMarker"));
+    }
+
+    @Test
+    @DisplayName("an explicitly empty KEEPUP_ROLES defaults to web")
+    void explicitlyEmptyDefaultsToWeb() {
+        // given KEEPUP_ROLES set to the empty string
+        contextRunner
+                .withPropertyValues("keepup.roles=")
+                // when the context is built
+                .run(context ->
+                        // then the default web node behaviour applies
+                        assertThat(context)
+                                .hasBean("webRoleMarker")
+                                .doesNotHaveBean("workerRoleMarker")
+                                .doesNotHaveBean("relayRoleMarker"));
+    }
+
+    @Test
     @DisplayName("markers are registered as ApplicationRunners")
     void markersAreApplicationRunners() {
         // given all three roles active
@@ -77,30 +109,33 @@ class OnRoleConditionTest {
     }
 
     @Test
-    @DisplayName("the active set is trimmed, lower-cased and free of blanks")
-    void parsesRawRolesLeniently() {
-        // given a messily formatted KEEPUP_ROLES value
-        MockEnvironment environment =
-                new MockEnvironment().withProperty(OnRoleCondition.ROLES_PROPERTY, " Web , WORKER ,,relay ");
+    @DisplayName("a bean shared by two roles is registered when either is active")
+    void sharedBeanMatchesWhenEitherRoleIsActive() {
+        ApplicationContextRunner sharedRunner =
+                new ApplicationContextRunner().withUserConfiguration(SharedWork.class);
 
-        // when the active roles are parsed
-        var activeRoles = OnRoleCondition.activeRoles(environment);
-
-        // then whitespace, case and empty entries are normalised away
-        assertThat(activeRoles).containsExactlyInAnyOrder("web", "worker", "relay");
+        // given a bean declared for both worker and relay
+        // when only worker is active -> present
+        sharedRunner
+                .withPropertyValues("keepup.roles=worker")
+                .run(context -> assertThat(context).hasBean("sharedByWorkerAndRelay"));
+        // when only relay is active -> present
+        sharedRunner
+                .withPropertyValues("keepup.roles=relay")
+                .run(context -> assertThat(context).hasBean("sharedByWorkerAndRelay"));
+        // when only web is active -> absent (no intersection)
+        sharedRunner
+                .withPropertyValues("keepup.roles=web")
+                .run(context -> assertThat(context).doesNotHaveBean("sharedByWorkerAndRelay"));
     }
 
-    @Test
-    @DisplayName("a blank KEEPUP_ROLES falls back to the default web role")
-    void blankRolesFallBackToDefault() {
-        // given a KEEPUP_ROLES that is present but blank
-        MockEnvironment environment =
-                new MockEnvironment().withProperty(OnRoleCondition.ROLES_PROPERTY, "   ");
+    @Configuration(proxyBeanMethods = false)
+    static class SharedWork {
 
-        // when the active roles are parsed
-        var activeRoles = OnRoleCondition.activeRoles(environment);
-
-        // then the process still assumes the default web role
-        assertThat(activeRoles).containsExactly(OnRoleCondition.DEFAULT_ROLE);
+        @Bean
+        @OnRole({Role.WORKER, Role.RELAY})
+        String sharedByWorkerAndRelay() {
+            return "shared";
+        }
     }
 }
