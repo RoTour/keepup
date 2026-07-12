@@ -31,3 +31,5 @@ Both adapters must be configured so the give-up threshold is reachable and cheap
 *Exactly one* is a real constraint: an at-least-once queue can deliver the final attempt twice. `AbandonGrading` must be idempotent for the same reason `ProposeEvaluation` is, and its second call must not un-propose an Evaluation that a concurrent redrive has already graded.
 
 `RetryAbandonedGradings` is a Trainer-facing act on a Trainer-facing screen. It is not a scheduled sweep, and it is deliberately not automatic — an LLM provider that is still down would be retried into a loop, and the one who knows whether it is worth another try is the person in the room.
+
+> **Inferred, not decided — awaiting the product owner.** The sources say only that recovery is a `RetryAbandonedGradings` use case, and that M3's demo is "a retry action". Whether that action is *exclusively* Trainer-triggered, or is also backed by a scheduled sweep on the relay role, has never been decided. The paragraph above is the conservative reading. If a sweep is wanted, it changes nothing structural — the use case is the same — but it needs a backoff policy, and this ADR should say so.

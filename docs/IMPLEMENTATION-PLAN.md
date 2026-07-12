@@ -23,7 +23,7 @@ binary per-Criterion **Verdict** with verbatim **Evidence**; the Trainer triages
 groups Sessions across weeks; Learners register an account (deferred, after their first Session)
 so the Trainer gets a longitudinal radar and Learners keep their feedback (Identity, supporting).
 
-### ADR index (0001–0015 are decided product/architecture facts; 0016–0021 were written in M0, slice S0.7)
+### ADR index (0001–0015 are decided product/architecture facts; 0016–0023 were written in M0, slice S0.7)
 
 | ADR | Decision |
 |-----|----------|
@@ -48,6 +48,8 @@ so the Trainer gets a longitudinal radar and Learners keep their feedback (Ident
 | 0019 | Abandonment is a domain fact reported by the adapter on the final delivery attempt (the domain never sees a receive count); redrive is `RetryAbandonedGradings`, identical on both brokers, no AWS console; `undecided → proposed \| abandoned \| overridden`, `abandoned → proposed` legal, `overridden` terminal vs LLM writes |
 | 0020 | Cross-context calls: driven port in the *consuming* context returning context-owned VOs, adapter in `:backend:app`, field-by-field mapping IS the copy; no entity crosses; ArchUnit proves no context imports another |
 | 0021 | keepup connects to Postgres directly (5432, session mode), never through Supavisor — a transaction-mode pooler silently kills `LISTEN/NOTIFY` and session-level advisory locks, and the failure mode is *nothing happening* |
+| 0022 | Backend stack (§2): Gradle over Maven because `java-test-fixtures` hosts the ADR-0008 contract suite; JPA for exactly three deep aggregates with hand-written mapping (annotation-free domain); `JdbcClient` everywhere else because of `ON CONFLICT DO NOTHING`; Flyway owns the schema, JPA `validate`; Postgres 15.8 |
+| 0023 | LLM provider binding: OpenRouter behind `ILlmGrader`, no provider type crosses; the adapter is where ADR-0011's containment, ADR-0007's verbatim-evidence validation and forced tool-calling all land; provider swapping is a live possibility, which is why the port exists |
 
 ## 2. Stack (fixed — decided by the product owner)
 
@@ -195,8 +197,15 @@ ops hardening (M8). Every milestone ends with a demo criterion exercised for rea
 - CI (GitHub Actions): backend job (Gradle build + Testcontainers), frontend job (lint/test/build),
   secrets-gated `sqs-contract` job (manual / main-only).
 - Move glossaries next to modules; leave pointers in `docs/contexts/`.
-- **Write ADR-0016…0020** (§3 + §8; titles: backend stack; process topology & relay duties;
-  web sessions & socket auth; LLM provider binding; cross-context calls).
+- **Write ADR-0016…0023** (done — slice S0.7): 0016 only Delivery pays for CQRS · 0017 the relay
+  enqueues the grading job, and the outbox is appended under a lock · 0018 the web session lives in
+  Postgres, and the cookie authenticates the socket · 0019 abandonment is a domain fact, and redrive
+  is a use case · 0020 no context imports another, so the crossing lives in the composition root ·
+  0021 keepup connects to Postgres directly, and never through the pooler · 0022 Gradle serves the
+  contract suite, and JPA serves three aggregates and nothing else · 0023 OpenRouter is an adapter,
+  and the port is where the rules live.
+  (Process topology & relay duties gets no ADR: web×N is settled by 0018 and the relay's singleton
+  lock by 0021; what remains is deployment configuration, documented in §5.)
 
 ### M1 — Trainer identity + Authoring core
 **Demo: a provisioned trainer logs in and authors a quiz with questions and criteria in Angular.**
@@ -401,7 +410,11 @@ The three crossings:
 
 ## 12. First actions for the implementing session
 
-1. Write ADR-0016…0020 (contents in §3, §5, §8).
+1. ~~Write ADR-0016…0023 (contents in §2, §3, §5, §8, and `docs/WORKFLOW.md` §1.1).~~ **Done** —
+   slice S0.7. Three points in them are flagged inline as *inferred, not decided* and are open for
+   the product owner: recovery from a mid-registration crash (ADR-0020), whether a session-mode
+   pooler is rejected too (ADR-0021), and whether `RetryAbandonedGradings` is Trainer-triggered only
+   or also swept (ADR-0019).
 2. Execute M0 in order: Gradle skeleton → compose → Flyway V1 → ArchUnit → Angular workspace →
    CI → glossary relocation.
 3. Begin M1 with `/domain` TrainerAccount.

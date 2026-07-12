@@ -28,6 +28,8 @@ But the contexts do need things from each other. Delivery needs a Quiz's Questio
 
 **An orchestrator has no transaction spanning two contexts.** Physically it could — one process, one database — but a transaction across two contexts is the coupling this ADR removes, re-entered through the back door. So registration is a *sequence*, and it has a window: an account can exist in Identity with its participation not yet claimed in Delivery. ADR-0015 bounds the Claim by the token's life, so a retry is available for as long as the Learner's tab is; beyond that the anonymous row stays anonymous, which is the outcome ADR-0015 already accepts.
 
+> **Inferred, not decided — awaiting the product owner.** Neither plan §8 nor ADR-0015 says what happens if the orchestrator crashes *between* `RegisterLearner` and `ClaimParticipation`: the Learner has a verified account and their first Session's work is still anonymous. The reading above — the Claim is simply retried while the token lives, and otherwise the row stays anonymous under ADR-0015's existing rule — is the conservative one and requires no new machinery. The alternatives (a compensating action, or a durable claim-intent the relay retries) are real designs and are not chosen here.
+
 The call is synchronous, and `StartSession` is slower by the cost of one read in another context. It is a read, in the same database, in the same JVM.
 
 **ArchUnit is the proof.** No class under `keepup.authoring.*` imports `keepup.delivery.*` or `keepup.identity.*`, and the same in every other direction. Live from M0, failing the build, before there is any code to violate it.
