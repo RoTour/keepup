@@ -1,0 +1,50 @@
+# syntax=docker/dockerfile:1
+# keepup frontend — Angular SPA built and served by nginx.
+#
+# Build context is the repository root:
+#     docker build -f infra/docker/Dockerfile.frontend .
+#
+# Only the frontend/ paths the build needs are COPYd in (never node_modules, dist,
+# .env or anything outside frontend/), so no secret or stale artifact reaches a layer.
+# This image serves static files only. It does NOT proxy /api or /ws — in production
+# Caddy owns that. Locally the Angular dev server's proxy.conf.json handles it.
+
+# ---- Stage 1: build the production bundle ------------------------------------
+# Pinned to a concrete version (not floating 24-alpine), like the compose services.
+FROM node:24.18.0-alpine AS build
+WORKDIR /app
+
+# Install deps from the lockfile first so this layer caches across source changes.
+# The cache mount keeps npm's download cache across builds (not baked into the image).
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+
+# Then the sources the Angular build actually reads.
+COPY frontend/angular.json frontend/tsconfig.json frontend/tsconfig.app.json ./
+COPY frontend/src/ ./src/
+COPY frontend/public/ ./public/
+
+# Production build (angular.json defaultConfiguration = production).
+# @angular/build:application emits to dist/<project>/browser — here dist/keepup/browser.
+RUN npm run build
+
+# ---- Stage 2: serve with nginx ----------------------------------------------
+# Pinned to a concrete version (not floating alpine), like the compose services.
+FROM nginx:1.31.2-alpine AS runtime
+
+# SPA config: serve the built assets and fall back to index.html for client routes.
+# No /api or /ws proxy here (Caddy's job in prod).
+RUN printf '%s\n' \
+    'server {' \
+    '    listen 80;' \
+    '    server_name _;' \
+    '    root /usr/share/nginx/html;' \
+    '    index index.html;' \
+    '    location / {' \
+    '        try_files $uri $uri/ /index.html;' \
+    '    }' \
+    '}' > /etc/nginx/conf.d/default.conf
+
+COPY --from=build /app/dist/keepup/browser/ /usr/share/nginx/html/
+
+EXPOSE 80

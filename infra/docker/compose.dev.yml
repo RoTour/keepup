@@ -1,8 +1,8 @@
-# keepup — local development backing services.
+# keepup — local development stack.
 #
-# Backing services ONLY: Postgres, RabbitMQ, Mailpit.
-# The `app` and `migrate` services are deliberately absent — they are owned by
-# the slice that introduces the Dockerfiles and will be added here later.
+# Backing services (Postgres, RabbitMQ, Mailpit) plus the application (`app`).
+# The `migrate` service is deliberately absent — it runs Flyway and is owned by
+# the migration slice, which will add it here later.
 #
 # Usage:  cp .env.example .env && docker compose -f compose.dev.yml up -d
 # See README.md.
@@ -103,6 +103,38 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+
+  app:
+    # ONE image, three roles. Here it runs as `web`; worker/relay are the same
+    # artifact with a different KEEPUP_ROLES. Build context is the repo ROOT so the
+    # Dockerfile can see the whole Gradle build (../.. from this compose file).
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.backend
+    container_name: keepup-app
+    restart: unless-stopped
+    environment:
+      # Role is a runtime duty, not a Spring profile. web = HTTP + actuator.
+      KEEPUP_ROLES: web
+    ports:
+      # Loopback-only by default, like every other service here — see the postgres
+      # ports comment. The Angular dev proxy forwards /api and /ws to 8080.
+      - "${BIND_ADDR:-127.0.0.1}:${APP_PORT:-8080}:8080"
+    depends_on:
+      # Topology for later slices: the app doesn't touch the DB yet, but the roles
+      # that will (worker/relay) need Postgres up and initialised first. Waiting on
+      # `service_healthy` means schemas are already created (see the healthcheck).
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # busybox wget ships in the alpine base — no extra tooling added to the image.
+      # /actuator/health returns UP in every role once the context is up.
+      test:
+        ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
 volumes:
   pgdata:
