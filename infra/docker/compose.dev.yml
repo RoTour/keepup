@@ -124,13 +124,26 @@ services:
       FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       FLYWAY_USER: ${POSTGRES_USER}
       FLYWAY_PASSWORD: ${POSTGRES_PASSWORD}
+      # Keep flyway_schema_history in its OWN schema, never `public`. On the Supabase
+      # production Postgres, `public` is the schema PostgREST auto-exposes over the
+      # REST API — a history table there would be publicly queryable on this
+      # build-in-public repo. It is also the odd-one-out in a schema-per-context
+      # layout. With Flyway's default createSchemas=true, this creates the `flyway`
+      # schema and puts the history table there.
+      # COORDINATION: M1's app-side Flyway MUST set `spring.flyway.default-schema:
+      # flyway` so both Flyway configs point at the SAME history table. If they
+      # disagree, the app's `validate` sees an empty history and fails at boot.
+      FLYWAY_DEFAULT_SCHEMA: flyway
+      # Set the locations explicitly. The bare `sql` default triggers a Flyway
+      # "may be deprecated" warning; naming it silences that and future-proofs.
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
       # postgres is already gated healthy below; the retries are a cheap belt against
       # the brief window between "accepting connections" and "ready for DDL".
       FLYWAY_CONNECT_RETRIES: "10"
     volumes:
       # The classpath migration dir (backend/app/.../db/migration) mounted read-only
-      # at the image's default locations root (filesystem:/flyway/sql). Same files
-      # M1's app-side Flyway will validate JPA against — one source of truth.
+      # at FLYWAY_LOCATIONS (filesystem:/flyway/sql). Same files M1's app-side Flyway
+      # will validate JPA against — one source of truth.
       - ../../backend/app/src/main/resources/db/migration:/flyway/sql:ro
     depends_on:
       postgres:

@@ -49,24 +49,34 @@ CREATE TABLE IF NOT EXISTS delivery.outbox (
     published_at TIMESTAMPTZ
 );
 
+-- FORWARD NOTE for the relay slice (S2.7): this schema carries TWO progress
+-- mechanisms — the global projection_cursor.last_seq (below) and this per-row
+-- published_at. They are not redundant and the relay must not treat them as
+-- interchangeable. ADR-0017's drain is `WHERE seq > cursor ORDER BY seq`, so the
+-- CURSOR is the single authoritative drain predicate; published_at is an
+-- audit/pruning marker (which rows have been drained, for observability and for
+-- pruning the growing outbox — ADR-0006), NOT the drain predicate. Draining on
+-- `published_at IS NULL` instead would reintroduce ADR-0017's skipped-row bug,
+-- because published_at is set out of seq order under crashes. Pick the cursor.
+
 -- ---------------------------------------------------------------------------
 -- delivery.projection_cursor — the relay's single, global, forward-only cursor
 -- (ADR-0006 "a last-applied seq cursor"; ADR-0017 "the cursor is global"). The
 -- relay drains `WHERE seq > last_seq ORDER BY seq` and advances last_seq strictly.
--- The singleton constraint (only value TRUE, and it is the PK) makes a second
--- cursor row impossible: the global ordering guarantee requires exactly one
--- cursor, so the DDL forbids more than one (ADR-0017).
+-- only_row is a singleton flag, not a key: it may only be TRUE (CHECK) and it is
+-- the PK, so a second cursor row is impossible. The global ordering guarantee
+-- requires exactly one cursor, so the DDL forbids more than one (ADR-0017).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS delivery.projection_cursor (
-    id         BOOLEAN      NOT NULL DEFAULT TRUE,
+    only_row   BOOLEAN      NOT NULL DEFAULT TRUE,
     last_seq   BIGINT       NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    CONSTRAINT projection_cursor_pk        PRIMARY KEY (id),
-    CONSTRAINT projection_cursor_singleton CHECK (id)
+    CONSTRAINT projection_cursor_pk        PRIMARY KEY (only_row),
+    CONSTRAINT projection_cursor_singleton CHECK (only_row)
 );
 
 -- Seed the one cursor row at seq 0, so the first drain (`WHERE seq > 0`) picks up
 -- outbox seq 1. Idempotent: a re-run leaves an already-advanced cursor untouched.
-INSERT INTO delivery.projection_cursor (id, last_seq)
+INSERT INTO delivery.projection_cursor (only_row, last_seq)
 VALUES (TRUE, 0)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (only_row) DO NOTHING;
