@@ -2,9 +2,9 @@
 
 ## Contexts
 
-- [Authoring](./docs/contexts/authoring/CONTEXT.md) — a Trainer writes open-ended questions and states what a good answer must contain
-- [Delivery](./docs/contexts/delivery/CONTEXT.md) — a Quiz is run live with an audience: answers are collected, graded, and released
-- [Identity](./docs/contexts/identity/CONTEXT.md) — *supporting*: owns the accounts. Trainers are provisioned (no signup); Learners self-register, deferred until after their first Session. Issues `TrainerId` and `LearnerAccountId`
+- [Authoring](./backend/contexts/authoring/CONTEXT.md) — a Trainer writes open-ended questions and states what a good answer must contain
+- [Delivery](./backend/contexts/delivery/CONTEXT.md) — a Quiz is run live with an audience: answers are collected, graded, and released
+- [Identity](./backend/contexts/identity/CONTEXT.md) — *supporting*: owns the accounts. Trainers are provisioned (no signup); Learners self-register, deferred until after their first Session. Issues `TrainerId` and `LearnerAccountId`
 
 ## Relationships
 
@@ -17,4 +17,4 @@
 
 ## Layout
 
-These glossaries live under `docs/contexts/` until the module layout exists, then they move next to their packages. ADRs are numbered globally in `docs/adr/`; with two contexts, per-context numbering buys nothing.
+These glossaries live next to their packages under `backend/contexts/`, with pointer stubs left under `docs/contexts/`. ADRs are numbered globally in `docs/adr/`; with two contexts, per-context numbering buys nothing.
