@@ -5,11 +5,14 @@
 **/application-local.yml
 *.pem
 **/secrets/
-infra/terraform/*.tfstate
-infra/terraform/*.tfstate.*
-infra/terraform/.terraform/
-infra/terraform/*.tfvars
-!infra/terraform/*.tfvars.example
+# unanchored on purpose: a `terraform apply` run from any directory must not be
+# able to drop an un-ignored state file into a public repo
+*.tfstate
+*.tfstate.*
+**/.terraform/
+*.tfvars
+!*.tfvars.example
+!**/.terraform.lock.hcl
 
 # build
 build/
