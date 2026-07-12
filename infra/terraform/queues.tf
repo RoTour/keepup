@@ -18,6 +18,14 @@ resource "aws_sqs_queue" "grading_dlq" {
 
   message_retention_seconds = var.dlq_message_retention_seconds
 
+  # Encryption at rest with the SQS-owned key (SSE-SQS). A grading job's body is
+  # a learner's submission — educational PII — and this DLQ holds them for 14
+  # days, longer than any other queue here. Set explicitly on every queue so
+  # encryption is a reviewable fact in this file, not a bet on an account
+  # default that could be flipped elsewhere. SSE-SQS is free, needs no KMS key,
+  # and is transparent to clients.
+  sqs_managed_sse_enabled = true
+
   tags = {
     Name = "${var.queue_name_prefix}-dlq"
     Role = "dead-letter"
@@ -68,6 +76,10 @@ resource "aws_sqs_queue" "grading" {
     deadLetterTargetArn = aws_sqs_queue.grading_dlq.arn
     maxReceiveCount     = var.max_receive_count
   })
+
+  # Encryption at rest (SSE-SQS). Bodies are learner submissions — PII. See the
+  # note on grading_dlq for why this is set on every queue explicitly.
+  sqs_managed_sse_enabled = true
 
   tags = {
     Name = var.queue_name_prefix
@@ -125,6 +137,10 @@ resource "aws_sqs_queue" "grading_test_dlq" {
   # be counted by an assertion that expects EXACTLY ONE abandoned outcome.
   message_retention_seconds = var.test_message_retention_seconds
 
+  # Encryption at rest (SSE-SQS). Set on the CI queues too so the whole stack is
+  # uniformly encrypted and a reviewer never has to ask "why not this one?".
+  sqs_managed_sse_enabled = true
+
   tags = {
     Name = "${var.queue_name_prefix}-test-dlq"
     Role = "dead-letter"
@@ -151,6 +167,9 @@ resource "aws_sqs_queue" "grading_test" {
     deadLetterTargetArn = aws_sqs_queue.grading_test_dlq.arn
     maxReceiveCount     = var.test_max_receive_count
   })
+
+  # Encryption at rest (SSE-SQS). Uniform across all four queues.
+  sqs_managed_sse_enabled = true
 
   tags = {
     Name = "${var.queue_name_prefix}-test"

@@ -67,20 +67,45 @@ variable "dlq_message_retention_seconds" {
 variable "github_repository" {
   description = <<-EOT
     The "owner/repo" whose GitHub Actions workflows may assume the CI role.
-    This is the ONLY thing scoping the trust policy: it becomes the OIDC
-    subject condition "repo:<owner>/<repo>:*". Widen it and you hand the role
-    to strangers.
+    Fixes the "repo:<owner>/<repo>:" prefix of the OIDC subject condition.
+    Widen it and you hand the role to strangers.
   EOT
   type        = string
   default     = "RoTour/keepup"
 
   validation {
-    # A "*" here would produce a subject like "repo:*:*", which any repository
+    # A "*" here would produce a subject like "repo:*:...", which any repository
     # on github.com would match. That is the one catastrophic misconfiguration
     # available in this file, so refuse it at plan time rather than trusting a
     # code review to catch it.
     condition     = can(regex("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", var.github_repository))
-    error_message = "github_repository must be exactly \"owner/repo\" with no wildcards: it is the only thing scoping the OIDC trust policy to this repository rather than to all of GitHub."
+    error_message = "github_repository must be exactly \"owner/repo\" with no wildcards: it is what scopes the OIDC trust policy to this repository rather than to all of GitHub."
+  }
+}
+
+variable "github_oidc_subject_suffix" {
+  description = <<-EOT
+    The part of the OIDC subject AFTER "repo:<owner>/<repo>:". Narrows the trust
+    WITHIN the repository. Default "environment:ci" trusts only a job that
+    declares `environment: ci` — not every ref/tag/PR run. The full subject
+    becomes "repo:<owner>/<repo>:environment:ci".
+
+    A job that omits `environment: ci` gets a subject that does not match and
+    fails AssumeRole closed — the safe direction. The matching CI contract is
+    recorded in WORKFLOW §8.
+
+    Other valid narrowings: "ref:refs/heads/master", "environment:production".
+  EOT
+  type        = string
+  default     = "environment:ci"
+
+  validation {
+    # The subject may legitimately contain ":" and "/" (e.g. "environment:ci",
+    # "ref:refs/heads/master"), so those are allowed. A "*" is NOT — it would
+    # re-open the "trust every ref/PR in the repo" hole this suffix exists to
+    # close, or worse. If it does not match this class, refuse it at plan time.
+    condition     = can(regex("^[A-Za-z0-9._/:-]+$", var.github_oidc_subject_suffix))
+    error_message = "github_oidc_subject_suffix must be a concrete subject segment such as \"environment:ci\" or \"ref:refs/heads/master\" — no wildcards. A \"*\" would re-widen the trust it exists to narrow."
   }
 }
 

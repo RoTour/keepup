@@ -12,9 +12,16 @@
 # queue_name_prefix = "keepup-grading"
 
 # --- GitHub OIDC (the CI identity) ---
-# The ONLY thing scoping the trust policy to us rather than to all of GitHub.
-# Must be exactly "owner/repo" — wildcards are rejected at plan time.
+# Fixes the "repo:<owner>/<repo>:" prefix of the trust subject — the thing
+# scoping the role to us rather than to all of GitHub. Must be exactly
+# "owner/repo"; wildcards are rejected at plan time.
 # github_repository = "RoTour/keepup"
+
+# The part of the subject AFTER the repo — narrows trust WITHIN the repo.
+# Default "environment:ci" trusts only a job that declares `environment: ci`.
+# Concrete segments only (e.g. "environment:ci", "ref:refs/heads/master"); a
+# "*" is rejected at plan time. Change this only alongside WORKFLOW §8.
+# github_oidc_subject_suffix = "environment:ci"
 
 # An AWS account may hold only ONE OIDC provider per URL. If
 # token.actions.githubusercontent.com is ALREADY registered in this account,

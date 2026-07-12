@@ -101,39 +101,61 @@ would corrupt grades.
 
 ### The CI identity
 
-One role, `keepup-grading-ci`, assumable **only** by GitHub Actions workflows
-running in **this repository**.
+One role, `keepup-grading-ci`, assumable **only** by a GitHub Actions job that
+runs in **this repository** *and* declares the **`ci` environment**.
 
 **Trust policy** — two conditions, both load-bearing:
 
 | Claim | Condition | Value |
 |---|---|---|
 | `aud` | `StringEquals` | `sts.amazonaws.com` |
-| `sub` | `StringLike` | `repo:RoTour/keepup:*` |
+| `sub` | `StringLike` | `repo:RoTour/keepup:environment:ci` |
 
-The `sub` condition is the only thing separating "our CI" from "every
-repository on github.com". The trailing `*` covers every ref, environment, and
-event **within this repo** — the `repo:RoTour/keepup:` prefix is fixed.
-`variables.tf` validates `github_repository` against `^owner/repo$` and rejects
-wildcards at plan time, so it cannot silently widen to `repo:*:*`.
+The `sub` condition is what separates "our CI" from "every repository on
+github.com" — the `repo:RoTour/keepup:` prefix is fixed, and `variables.tf`
+validates `github_repository` against `^owner/repo$`, rejecting wildcards at
+plan time so it cannot widen to `repo:*:*`.
 
-To tighten further later — only `master`, or only a named GitHub Environment —
-narrow the subject to `repo:RoTour/keepup:ref:refs/heads/master` or
-`repo:RoTour/keepup:environment:ci`. That is one line in `iam.tf`.
+The `:environment:ci` suffix narrows further, *within* the repo. It is not
+`:*`. GitHub only stamps the `environment:ci` subject onto a job that names
+`environment: ci`, so the role trusts exactly that job — not arbitrary refs,
+tags, or `pull_request` runs that happen to inherit the workflow. A job that
+forgets the environment gets a non-matching subject and **fails AssumeRole
+closed** (the safe direction). The suffix lives in `github_oidc_subject_suffix`,
+which is guarded by its own regex — it accepts concrete segments like
+`environment:ci` or `ref:refs/heads/master` and rejects `*`.
 
-**Permission policy** — unchanged from the static-key design:
+> **Contract (WORKFLOW §8):** the CI slice's `sqs-contract` job MUST declare
+> both `environment: ci` and `permissions: id-token: write`. Miss either and
+> the assume fails closed.
 
-- **Actions:** `SendMessage`, `ReceiveMessage`, `DeleteMessage`,
-  `GetQueueAttributes`, `ChangeMessageVisibility`. Nothing else. No `sqs:*`.
-  Notably absent: `CreateQueue`, `DeleteQueue`, `PurgeQueue`,
+**Permission policy** — least-privilege, split into two statements:
+
+- **`sqs:SendMessage`** — on the two **source** queues only (`keepup-grading`,
+  `keepup-grading-test`). The DLQs are deliberately excluded: nothing sends to a
+  DLQ by hand (redrive is automatic), so a send grant there has no use except to
+  let a compromised token forge "grading abandoned" messages into the evidence
+  the DLQ exists to preserve.
+- **`sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes`,
+  `sqs:ChangeMessageVisibility`** — on all four queues. The suite receives from
+  and reads the DLQ to prove a job reached it.
+- No `sqs:*`. Notably absent: `CreateQueue`, `DeleteQueue`, `PurgeQueue`,
   `SetQueueAttributes`, `ListQueues`. Terraform manages the queues; the worker
   only uses them.
-- **Resources:** the four queue ARNs, enumerated. **No wildcard.**
+- **Resources:** the queue ARNs, enumerated. **No wildcard.**
 
-Worst case, if a workflow in this repo were compromised: the attacker can push
-and pull grading jobs on four named queues in one region, for the ~1h life of
-one token. They cannot enumerate the account's other queues, create or delete
-anything, or reach any other service.
+Worst case, if the `ci` job were compromised: the attacker can push to two named
+queues and pull from four, in one region, for the ~1h life of one token. They
+cannot forge give-up evidence into a DLQ, enumerate the account's other queues,
+create or delete anything, or reach any other service.
+
+### Encryption at rest
+
+All four queues set `sqs_managed_sse_enabled = true`. Message bodies are learner
+submissions — educational PII — so encryption at rest (SSE-SQS, the SQS-owned
+key) is set explicitly on every queue rather than left to an account default
+that could be flipped elsewhere. It is free, needs no KMS key, and is
+transparent to clients.
 
 ---
 
@@ -293,10 +315,16 @@ gh variable set AWS_ROLE_ARN --body "$(terraform output -raw ci_role_arn)"
 gh variable set AWS_REGION   --body "$(terraform output -raw aws_region)"
 ```
 
-The workflow then needs two things. The `id-token: write` permission is the one
-people forget, and its absence fails with a misleading *"Not authorized to
-perform sts:AssumeRoleWithWebIdentity"* — which reads like a trust-policy
-problem but means the runner never got a token at all:
+The workflow needs three things, and two of them are the ones people forget:
+
+- **`environment: ci` on the job.** The trust policy's subject is
+  `repo:RoTour/keepup:environment:ci`; GitHub only stamps that subject onto a
+  job that names this environment. Omit it and the assume fails closed.
+- **`permissions: id-token: write`.** Lets the runner request an OIDC token at
+  all. Its absence fails with a misleading *"Not authorized to perform
+  sts:AssumeRoleWithWebIdentity"* — which reads like a trust-policy problem but
+  means the runner never got a token to present.
+- The role ARN and region (below). Not secret.
 
 ```yaml
 permissions:
@@ -304,8 +332,9 @@ permissions:
   contents: read    # checkout
 
 jobs:
-  contract-tests:
+  sqs-contract:
     runs-on: ubuntu-latest
+    environment: ci   # REQUIRED: the trust policy is scoped to this environment.
     steps:
       - uses: actions/checkout@v4
 

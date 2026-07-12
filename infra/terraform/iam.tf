@@ -46,6 +46,16 @@ locals {
     aws_sqs_queue.grading_test_dlq.arn,
   ]
 
+  # The SOURCE queues only — the two the worker legitimately enqueues onto. The
+  # DLQs are deliberately excluded from send: nothing ever sends to a DLQ by
+  # hand, SQS's redrive machinery is the only writer. Granting send on a DLQ
+  # would let a compromised CI token forge "grading abandoned" messages into
+  # the very queue that exists to preserve honest evidence of give-ups.
+  grading_source_queue_arns = [
+    aws_sqs_queue.grading.arn,
+    aws_sqs_queue.grading_test.arn,
+  ]
+
   # Either the provider we just created, or the one the account already had.
   # See var.create_github_oidc_provider for why this is switchable.
   github_oidc_provider_arn = (
@@ -54,18 +64,26 @@ locals {
     : var.existing_github_oidc_provider_arn
   )
 
-  # The OIDC subject this role will accept, e.g. "repo:RoTour/keepup:*".
+  # The OIDC subject this role will accept, e.g.
+  # "repo:RoTour/keepup:environment:ci".
   #
-  # The trailing "*" covers every ref, environment and event in THIS repository
-  # (branches, tags, pull_request runs). It does NOT cover other repositories:
-  # the "repo:<owner>/<repo>:" prefix is fixed, and var.github_repository is
-  # validated to reject wildcards so this cannot silently widen to "repo:*:*".
+  # It is scoped to a named GitHub ENVIRONMENT ("ci"), not to the whole repo.
+  # "repo:<owner>/<repo>:*" would trust every ref, tag and pull_request run in
+  # the repo; this trusts only a job that declares `environment: ci`. The gap
+  # that closes is a future `pull_request_target` or a compromised action on
+  # some branch inheriting the role — none of which run in the `ci` environment
+  # unless a maintainer wired them to. GitHub only stamps the
+  # "...:environment:ci" subject on a job that names that environment, so a job
+  # that forgets it fails AssumeRole closed (the safe direction), which is the
+  # contract recorded in WORKFLOW §8.
   #
-  # To tighten further later — e.g. only master, or only a named GitHub
-  # Environment — narrow this to "repo:<owner>/<repo>:ref:refs/heads/master" or
-  # "repo:<owner>/<repo>:environment:ci". That is a policy change, not a code
-  # change; it happens right here.
-  github_oidc_subject = "repo:${var.github_repository}:*"
+  # It still does NOT cross repositories: the "repo:<owner>/<repo>:" prefix is
+  # fixed and var.github_repository is validated to reject wildcards, so this
+  # cannot widen to "repo:*:*".
+  #
+  # var.github_oidc_subject_suffix carries the "environment:ci" part, so the
+  # environment name lives in one variable rather than being spliced here.
+  github_oidc_subject = "repo:${var.github_repository}:${var.github_oidc_subject_suffix}"
 }
 
 # ---------------------------------------------------------------------------
@@ -151,8 +169,9 @@ resource "aws_iam_role" "grading_worker" {
   }
 }
 
-# Unchanged from the static-key version: same five data-plane actions, same
-# four enumerated queue ARNs. Only the identity that carries them changed.
+# Two statements, split by which queues each action belongs on. Same five
+# data-plane actions as before, still no wildcards — but SendMessage is now
+# held only on the source queues, never on the DLQs.
 resource "aws_iam_role_policy" "grading_worker" {
   name = "${var.queue_name_prefix}-sqs"
   role = aws_iam_role.grading_worker.id
@@ -161,11 +180,22 @@ resource "aws_iam_role_policy" "grading_worker" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "GradingQueueDataPlaneOnly"
+        # Enqueue a grading job. Source queues ONLY. A grading job is never
+        # placed on a DLQ by a client — SQS's redrive does that automatically
+        # after maxReceiveCount — so send rights on a DLQ have no legitimate
+        # use and one illegitimate one: forging give-up evidence. Withheld.
+        Sid      = "EnqueueOntoSourceQueuesOnly"
+        Effect   = "Allow"
+        Action   = "sqs:SendMessage"
+        Resource = local.grading_source_queue_arns
+      },
+      {
+        # Consume, acknowledge, inspect and extend leases. Legitimate on all
+        # four queues: the contract suite receives and deletes from the DLQ to
+        # prove a job reached it, and reads its depth.
+        Sid    = "ConsumeAndInspectAllQueues"
         Effect = "Allow"
         Action = [
-          # Enqueue a grading job.
-          "sqs:SendMessage",
           # Claim a grading job.
           "sqs:ReceiveMessage",
           # Acknowledge a finished grading job so it is not redelivered.
