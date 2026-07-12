@@ -1,0 +1,24 @@
+# secrets — the repo is public; see docs/WORKFLOW.md §9
+.env
+.env.*
+!.env.example
+**/application-local.yml
+*.pem
+**/secrets/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/.terraform/
+infra/terraform/*.tfvars
+!infra/terraform/*.tfvars.example
+
+# build
+build/
+.gradle/
+node_modules/
+dist/
+.angular/
+
+# tooling
+.DS_Store
+.idea/
+*.iml

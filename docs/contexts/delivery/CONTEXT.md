@@ -11,17 +11,21 @@ The person running the Session. The only actor with authority over a grade.
 _Avoid_: Intervenant, Formateur, Instructor, Teacher, Speaker
 
 **Learner**:
-A person who joins a Session with its Join Code and answers its questions. Known by a first name they declare themselves, which nobody verifies. Sees feedback on their own answers, and never on anyone else's.
+A person who joins a Session with its Join Code and answers its questions. Enters anonymously under a self-declared first name; past their first Session in a Course, they participate through a Learner Account. Sees feedback on their own answers, and never on anyone else's.
 _Avoid_: Student, Participant, Attendee, Apprenant, User
 
 ### The run
+
+**Course**:
+The teaching engagement one audience shares across weeks: a named sequence of Sessions run by one Trainer. A Session may run inside a Course or stand alone; only a Course tracks Learners across Sessions.
+_Avoid_: Class, Cohort, Programme, Term, Cours
 
 **Session**:
 One live run of a Quiz, with one audience, at one point in time. Owns the Questions and Criteria copied into it at start, and everything the Learners did during the run.
 _Avoid_: Quiz, Live, Run, Class, Cours
 
 **Join Code**: 
-The short code a Trainer reads out so Learners can enter a Session. It is the only thing standing between a Session and anyone who has it.
+The short code a Trainer reads out so Learners can enter a Session. Assigned when the Session is created — it can sit in the slide deck — and admits nobody until the Trainer starts the Session. It is the only thing standing between a started Session and anyone who has it.
 _Avoid_: PIN, Access code, Invite, Token
 
 **Question**:
@@ -53,7 +57,7 @@ The Trainer's act of making one graded Evaluation visible to the Learner who ear
 _Avoid_: Publish, Reveal, Validate, Approve
 
 **Close**:
-The Trainer's act of ending answering on a Question and revealing its Criteria to the Learners who answered it. It both cuts off whoever had not answered yet and hands out the rubric.
+The Trainer's act of ending answering on a Question and revealing its Criteria to the Session's Learners — those who answered and those for whom it is now too late. It both cuts off whoever had not answered yet and hands out the rubric.
 _Avoid_: Lock, Finish, Complete, End
 
 **Override**:

@@ -17,4 +17,6 @@ A Learner may see feedback on question 2 before question 1, if question 1's grad
 
 The recovery story only works while the class is still in the room. Per [ADR-0009](./0009-a-learner-is-a-browser-token-and-a-first-name.md) a Learner's feedback dies with their browser tab, so redriving the dead-letter queue after everyone has dispersed Releases to nobody. For a four-minute outage inside a two-hour class this is nearly always fine — but it is *nearly*, not always.
 
+> Repaired by [ADR-0015](./0015-a-learner-registers-after-their-first-session.md): a registered Learner's released feedback belongs to their account and survives the tab, so a redrive after dispersal now Releases to people who will see it tonight. Only anonymous first-Session participants still lose it.
+
 The number of attempts before an Evaluation is abandoned is a policy of the queue adapter, not of the domain. The domain is told *that* grading was abandoned, never that `ApproximateReceiveCount` exceeded five.

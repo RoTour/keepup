@@ -12,6 +12,8 @@ Close does two things at once. It **ends answering**, cutting off anyone who had
 
 That second half is what makes self-pacing survivable. Without it, rolling release would put the answer key on Marie's screen at 14:03 while Jean, beside her, is still typing his answer to the same Question until 14:10.
 
+> Widened later: Close reveals the Criteria to every Learner in the Session, answered or not — a non-answerer sees the Question closed, too late to answer, rubric included. The room doesn't cover its ears for those who never raised a hand. The glossary's Close entry is canonical.
+
 ## Considered Options
 
 - **Trainer-paced: one Question open at a time.** Rejected. It makes the comprehension radar a clean snapshot of one Question the whole room answered together, and it makes Close harmless because everyone had finished. But it stalls fast Learners at the pace of the slowest, and a rolling worksheet is a legitimate classroom.
