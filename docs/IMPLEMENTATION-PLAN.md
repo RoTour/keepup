@@ -23,7 +23,7 @@ binary per-Criterion **Verdict** with verbatim **Evidence**; the Trainer triages
 groups Sessions across weeks; Learners register an account (deferred, after their first Session)
 so the Trainer gets a longitudinal radar and Learners keep their feedback (Identity, supporting).
 
-### ADR index (0001–0015 are decided product/architecture facts; 0016–0020 are written in M0)
+### ADR index (0001–0015 are decided product/architecture facts; 0016–0021 were written in M0, slice S0.7)
 
 | ADR | Decision |
 |-----|----------|
@@ -42,6 +42,12 @@ so the Trainer gets a longitudinal radar and Learners keep their feedback (Ident
 | 0013 | Trainers are provisioned (no signup): username + password (no email), server-side session cookie; Operator resets passwords out-of-band |
 | 0014 | Quiz sharing: Share/Public/Import — import is a full copy owned by the importer; lineage id only; un-share never touches copies |
 | 0015 | Learner Accounts via deferred registration: anonymous first Session, then verified school email + password; one-Session grace per Course; optional per-Course email-domain restriction; Claim binds the token's work to the account (token-lifetime window); released feedback survives with the account |
+| 0016 | CQRS-lite is Delivery-only: outbox, relay and projections stop at Delivery's border; Authoring and Identity use aggregates + plain transactional reads off their own tables |
+| 0017 | The relay enqueues the grading job while draining `SubmissionReceived` (enqueueing from the command handler is an unrepairable dual write); outbox appends take `pg_advisory_xact_lock` so `seq` order is commit order — do not remove the lock |
+| 0018 | Web session in Postgres via Spring Session JDBC from M0 (a cookie valid on any node is what makes web×N work); WebSocket handshake authenticated by cookie, or by opaque token for anonymous Learners; CSRF cookie token for Angular; no JWT |
+| 0019 | Abandonment is a domain fact reported by the adapter on the final delivery attempt (the domain never sees a receive count); redrive is `RetryAbandonedGradings`, identical on both brokers, no AWS console; `undecided → proposed \| abandoned \| overridden`, `abandoned → proposed` legal, `overridden` terminal vs LLM writes |
+| 0020 | Cross-context calls: driven port in the *consuming* context returning context-owned VOs, adapter in `:backend:app`, field-by-field mapping IS the copy; no entity crosses; ArchUnit proves no context imports another |
+| 0021 | keepup connects to Postgres directly (5432, session mode), never through Supavisor — a transaction-mode pooler silently kills `LISTEN/NOTIFY` and session-level advisory locks, and the failure mode is *nothing happening* |
 
 ## 2. Stack (fixed — decided by the product owner)
 
