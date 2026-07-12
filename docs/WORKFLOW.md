@@ -284,10 +284,10 @@ is fine), Gradle **9.6.1**, Spring Boot **4.1.0**, Angular **22**, Postgres **15
 | S0.4 | Angular 22 workspace + dev proxy + Playwright harness stub | staging | **A** ∥ |
 | S0.6 | Terraform: SQS main + DLQ + redrive, short-visibility test pair, scoped IAM, **S3 state backend** (eu-west-3) | staging | **A** ∥ |
 | S0.7 | ADR-0016…0021 (plan §3/§5/§8, plus **ADR-0021: direct Postgres, never the pooler** — §1.1) | staging | **A** ∥ |
-| S0.3 | Flyway V1: per-context schemas, outbox (`seq bigserial`, payload, `published_at`), projector cursor, Spring Session tables (auto-DDL off) | feat/S0.1 | **B** ∥ |
-| S0.5 | CI: `backend-test`, `frontend-test`, `secrets-scan`, `build-push`, `sqs-contract`, `deploy` (§8) | feat/S0.1 | **B** ∥ |
-| S0.8 | Glossaries move to `backend/contexts/*/CONTEXT.md`; pointers left in `docs/contexts/` | feat/S0.1 | **B** ∥ |
-| S0.9 | `:backend:app` boots: `@OnRole` condition, role gating, actuator health; a `@SpringBootTest contextLoads` smoke test (deferred from S0.1, which steers around the JUnit 6 / Boot 4.1 TestEngine wiring); backend + frontend Dockerfiles (§7); extends S0.2's compose with the `app` and one-shot `migrate` services | feat/S0.1 | **B** ∥ |
+| S0.5 | CI: `backend-test`, `frontend-test`, `secrets-scan`, `raw-html-gate`, `build-push`, `sqs-contract`, `deploy` (§8). References the Dockerfiles S0.9 creates at the pinned paths (`infra/docker/Dockerfile.{backend,frontend}`) — no file overlap, a build-arg contract | staging | **B** ∥ |
+| S0.8 | Glossaries move to `backend/contexts/*/CONTEXT.md`; pointers left in `docs/contexts/` | staging | **B** ∥ |
+| S0.9 | `:backend:app` boots: `@OnRole` condition, role gating, actuator health; a `@SpringBootTest contextLoads` smoke test (deferred from S0.1, which steers around the JUnit 6 / Boot 4.1 TestEngine wiring); backend + frontend Dockerfiles at `infra/docker/Dockerfile.{backend,frontend}` (§7); adds the `app` service to S0.2's compose. **Not** the `migrate` service — that runs Flyway and belongs to S0.3 | staging | **B** ∥ |
+| S0.3 | Flyway V1: per-context schemas, outbox (`seq bigserial`, payload, `published_at`), projector cursor, Spring Session tables (auto-DDL off); the one-shot `migrate` compose service + wiring `app` to `depends_on: migrate`. **Stacked on S0.9** — both touch the app module's config and the `app` compose service, so sequencing them avoids a shared-file conflict rather than racing it | feat/S0.9 | **B (after S0.9)** |
 | S0.10 | **Human-run.** Coolify: staging + prod apps, RabbitMQ container (vhosts `staging`/`prod`), two databases + roles, env vars, deploy webhooks; GitHub branch protection (§3.2) | — | **C** |
 
 Concurrency: 5 agents, then 4. **Demo:** `docker compose up`; boots in all three roles; CI green;
