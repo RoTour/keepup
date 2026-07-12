@@ -1,0 +1,57 @@
+[versions]
+# Toolchain / build
+java = "21"
+springBoot = "4.1.0"
+
+# Unmanaged by the Spring Boot BOM — pinned here.
+awsSdk = "2.47.5"
+archunit = "1.4.2"
+
+# Managed by the Spring Boot 4.1.0 BOM; recorded for visibility only.
+# Do NOT add versions to the libraries below that carry a BOM-managed version.
+#   flyway            12.4.0
+#   spring-amqp        4.1.0
+#   testcontainers     2.0.5
+#   spring-session     4.1.0
+#   spring-security    7.1.0
+#   junit-jupiter      6.0.3   <-- JUnit 6, not 5
+junit = "6.0.3"
+
+[libraries]
+# --- Platforms (BOMs) -------------------------------------------------------
+spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "springBoot" }
+aws-bom = { module = "software.amazon.awssdk:bom", version.ref = "awsSdk" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+
+# --- Test -------------------------------------------------------------------
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+archunit = { module = "com.tngtech.archunit:archunit", version.ref = "archunit" }
+
+# --- Spring (versions supplied by spring-boot-bom) --------------------------
+spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-starter-amqp = { module = "org.springframework.boot:spring-boot-starter-amqp" }
+spring-session-jdbc = { module = "org.springframework.session:spring-session-jdbc" }
+spring-security-crypto = { module = "org.springframework.security:spring-security-crypto" }
+
+# --- Persistence (versions supplied by spring-boot-bom) ---------------------
+flyway-core = { module = "org.flywaydb:flyway-core" }
+# Flyway 12 moved per-database support into its own artifact. flyway-core alone
+# will NOT migrate a Postgres database.
+flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
+
+# --- Testcontainers (versions supplied by spring-boot-bom) ------------------
+# HEADS UP: Spring Boot 4.1.0 pins Testcontainers 2.0.5, and Testcontainers 2.x
+# RENAMED every module with a `testcontainers-` prefix. The 1.x coordinates you
+# will find in every blog post and StackOverflow answer 404 against this BOM:
+#     org.testcontainers:postgresql     -> org.testcontainers:testcontainers-postgresql
+#     org.testcontainers:junit-jupiter  -> org.testcontainers:testcontainers-junit-jupiter
+# Use the aliases below and you cannot get it wrong. All verified to resolve.
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
+testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter" }
+testcontainers-localstack = { module = "org.testcontainers:testcontainers-localstack" }
+testcontainers-rabbitmq = { module = "org.testcontainers:testcontainers-rabbitmq" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
