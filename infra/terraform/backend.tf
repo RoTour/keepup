@@ -3,18 +3,24 @@
 # ---------------------------------------------------------------------------
 # This repository is PUBLIC.
 #
-# Terraform state is not a build artifact, it is a transcript. It records the
-# IAM user ARN, the access key id, the queue URLs, and — because AWS only ever
-# reveals it once, at creation — the IAM SECRET ACCESS KEY IN PLAINTEXT.
+# Since the move to OIDC federation, this stack no longer mints a long-lived
+# AWS credential, so state no longer contains a plaintext secret key. That
+# removes the catastrophic case. It does NOT make state publishable:
 #
-# A local `terraform.tfstate` that reaches a commit publishes live credentials
-# to the internet. `git rm` does not fix that: the blob stays in history, and
-# the key must be assumed compromised and rotated.
+#   - It records the AWS account id, role and queue ARNs, and queue URLs. That
+#     is a free reconnaissance map of the account for anyone who wants one, and
+#     the repo is public.
+#   - It is the shared source of truth for what exists. Two people applying
+#     against two divergent local copies is how you get orphaned queues that
+#     nothing manages and nobody notices.
 #
-# So state goes to S3 from the very first `terraform init`. There is never a
-# moment where a state file exists on a developer's disk inside the repo.
-# `.gitignore` already refuses `*.tfstate*` as a second line of defence — treat
-# that as a backstop, not as the plan. Do not weaken it.
+# So state still goes to S3 from the very first `terraform init`: private,
+# versioned, locked. Versioning is the undo button for a corrupted or truncated
+# write — without it, a bad write loses the mapping between config and real
+# resources and recovery means importing everything by hand.
+#
+# `.gitignore` refuses `*.tfstate*` as a second line of defence. That is a
+# backstop, not the plan. Do not weaken it.
 #
 # The bucket below must EXIST BEFORE the first `terraform init`. Terraform
 # cannot create the bucket that holds its own state — that is the bootstrap

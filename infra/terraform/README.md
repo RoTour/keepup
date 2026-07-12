@@ -11,27 +11,39 @@ a real broker to run against.
 
 ---
 
-## Read this first: the repo is public
+## There is no long-lived AWS credential in this project
 
-Terraform state is a transcript, not a build artifact. It records the IAM user
-ARN, the queue URLs, the access key id, and — because AWS reveals it exactly
-once, at creation — **the IAM secret access key in plaintext**.
+This is the single most important fact about this stack, and it is deliberate.
 
-A `terraform.tfstate` that reaches a commit in this repository publishes live
-AWS credentials to the internet. Deleting the file later does not help: the
-blob stays in git history and the key has to be assumed compromised and
-rotated.
+CI authenticates to AWS by **GitHub OIDC federation**. A workflow run presents
+a short-lived token that GitHub mints for it; AWS verifies that token and hands
+back temporary credentials that expire in about an hour.
 
-So: **state goes to S3 from the very first `terraform init`.** Never to the
-repo, not even "temporarily", not even "just to try a plan". `.gitignore`
-already refuses `*.tfstate*`, `.terraform/`, and `*.tfvars` — that is a
-backstop, not the plan. Do not weaken it.
+So:
+
+- **No access key in GitHub secrets.** What CI needs is a *role ARN*, and a
+  role ARN is an identifier, not a credential — knowing it gets you nothing.
+- **No secret in Terraform state.** Nothing in this stack is marked
+  `sensitive`, because nothing in it is a secret.
+- **Nothing to rotate.** There is no key with an age, no key to leak, no key to
+  find in a git history five years from now.
+
+The repository is **public**. A static access key here would have been a
+permanent secret guarding a public front door — and, because AWS reveals a
+secret key exactly once at creation, it would have sat in plaintext in
+Terraform state forever. OIDC removes the secret rather than protecting it.
+
+**Do not "simplify" this back into an IAM user with an access key.** If you
+find yourself reaching for `aws_iam_access_key`, you are undoing the point.
+
+State still goes to S3 and still must never be committed — see
+[below](#read-this-too-state-still-goes-to-s3).
 
 ---
 
 ## What gets created
 
-Four queues, one IAM user, one access key. Nothing else.
+Four queues, one OIDC provider, one assumable role. No users, no keys.
 
 | Queue | Visibility | maxReceiveCount | Long poll | Retention | What it's for |
 |---|---|---|---|---|---|
@@ -87,9 +99,29 @@ poison-message path.
 values that someone forgot to update, and copying them onto `keepup-grading`
 would corrupt grades.
 
-### The IAM credential
+### The CI identity
 
-One user, `keepup-grading-worker`, with a single inline policy:
+One role, `keepup-grading-ci`, assumable **only** by GitHub Actions workflows
+running in **this repository**.
+
+**Trust policy** — two conditions, both load-bearing:
+
+| Claim | Condition | Value |
+|---|---|---|
+| `aud` | `StringEquals` | `sts.amazonaws.com` |
+| `sub` | `StringLike` | `repo:RoTour/keepup:*` |
+
+The `sub` condition is the only thing separating "our CI" from "every
+repository on github.com". The trailing `*` covers every ref, environment, and
+event **within this repo** — the `repo:RoTour/keepup:` prefix is fixed.
+`variables.tf` validates `github_repository` against `^owner/repo$` and rejects
+wildcards at plan time, so it cannot silently widen to `repo:*:*`.
+
+To tighten further later — only `master`, or only a named GitHub Environment —
+narrow the subject to `repo:RoTour/keepup:ref:refs/heads/master` or
+`repo:RoTour/keepup:environment:ci`. That is one line in `iam.tf`.
+
+**Permission policy** — unchanged from the static-key design:
 
 - **Actions:** `SendMessage`, `ReceiveMessage`, `DeleteMessage`,
   `GetQueueAttributes`, `ChangeMessageVisibility`. Nothing else. No `sqs:*`.
@@ -98,20 +130,59 @@ One user, `keepup-grading-worker`, with a single inline policy:
   only uses them.
 - **Resources:** the four queue ARNs, enumerated. **No wildcard.**
 
-If this key leaks, the complete blast radius is: someone can push and pull
-grading jobs on four named queues in one region. They cannot enumerate the
-account's other queues, create or delete anything, or reach any other service.
-That turns a leak into a bounded incident fixed by rotating one key.
+Worst case, if a workflow in this repo were compromised: the attacker can push
+and pull grading jobs on four named queues in one region, for the ~1h life of
+one token. They cannot enumerate the account's other queues, create or delete
+anything, or reach any other service.
+
+---
+
+## Read this too: state still goes to S3
+
+OIDC removed the plaintext secret from state. It did not make state
+publishable. State still records the AWS account id, the role and queue ARNs,
+and the queue URLs — a free reconnaissance map of the account, in a public
+repo. It is also the shared source of truth for what exists; two people applying
+from two divergent local copies is how you get orphaned queues that nothing
+manages and nobody notices.
+
+So state lives in S3 from the very first `terraform init`: private, versioned,
+locked. `.gitignore` refuses `*.tfstate*` as a backstop — that is a second line
+of defence, not the plan. Do not weaken it.
 
 ---
 
 ## Bootstrap (one time, by hand)
 
-Terraform cannot create the bucket that holds its own state — that is the
-chicken-and-egg. Do this **once**, before the first `terraform init`.
+Use your own AWS credentials for these steps — your SSO / admin profile. (The
+role this stack creates is for CI, and cannot create anything anyway.)
 
-You need AWS credentials with admin-ish rights for these steps (your own IAM
-user / SSO profile — *not* the worker key this stack produces).
+### 0. Check whether the GitHub OIDC provider already exists — DO THIS FIRST
+
+An AWS account may hold **exactly one** OIDC provider per URL. If
+`token.actions.githubusercontent.com` is already registered — which it will be
+if *anything else* in this account already uses GitHub Actions — then creating
+it again fails with `EntityAlreadyExists`, **halfway through the apply**, after
+the queues have already been made.
+
+```sh
+aws iam list-open-id-connect-providers \
+  --query "OpenIDConnectProviderList[?contains(Arn, 'token.actions.githubusercontent.com')].Arn" \
+  --output text
+```
+
+- **Empty output** → the provider does not exist. Leave the defaults alone;
+  Terraform will create it.
+- **Prints an ARN** → the provider already exists. Put this in
+  `terraform.tfvars`:
+
+  ```hcl
+  create_github_oidc_provider       = false
+  existing_github_oidc_provider_arn = "<the ARN printed above>"
+  ```
+
+  A `lifecycle` precondition on the role stops the plan with a clear message if
+  you set the flag to `false` and forget the ARN.
 
 ### 1. Create the state bucket
 
@@ -120,7 +191,6 @@ substitute it everywhere below.
 
 ```sh
 export TF_STATE_BUCKET="keepup-tfstate-<something-unique>"
-export AWS_REGION=eu-west-3
 
 aws s3api create-bucket \
   --bucket "$TF_STATE_BUCKET" \
@@ -141,8 +211,6 @@ aws s3api put-bucket-versioning \
 ```
 
 ### 3. Block public access
-
-This is the bucket that will hold a plaintext IAM secret key. Belt and braces.
 
 ```sh
 aws s3api put-public-access-block \
@@ -189,55 +257,103 @@ terraform init \
 ```sh
 cd infra/terraform
 
-terraform init      # first run migrates nothing; state starts in S3
+terraform init
 terraform plan      # read it
 terraform apply
 ```
 
 To validate the config **without** AWS credentials and without touching the
-backend (this is what CI and a reviewer do):
+backend (this is what a reviewer does):
 
 ```sh
 terraform init -backend=false
 terraform validate
-terraform fmt -check
+terraform fmt -check -recursive
 ```
 
 ---
 
-## Getting the outputs into GitHub Actions
+## Wiring CI to the role
 
-Six secrets. Read them straight out of `terraform output` and pipe them into
-`gh` — do not stage them in a file. An untracked file today is a committed file
-after the next `git add -A`.
+There are **no secrets to set**. CI needs two values, and neither is
+confidential:
 
 ```sh
 cd infra/terraform
-
-gh secret set AWS_ACCESS_KEY_ID     --body "$(terraform output -raw grading_worker_access_key_id)"
-gh secret set AWS_SECRET_ACCESS_KEY --body "$(terraform output -raw grading_worker_secret_access_key)"
-gh secret set AWS_REGION            --body "$(terraform output -raw aws_region)"
-
-gh secret set SQS_GRADING_QUEUE_URL      --body "$(terraform output -raw grading_queue_url)"
-gh secret set SQS_GRADING_TEST_QUEUE_URL --body "$(terraform output -raw grading_test_queue_url)"
-gh secret set SQS_GRADING_TEST_DLQ_URL   --body "$(terraform output -raw grading_test_dlq_url)"
+terraform output -raw ci_role_arn   # arn:aws:iam::<account-id>:role/keepup/keepup-grading-ci
+terraform output -raw aws_region    # eu-west-3
 ```
 
-The contract suite runs against `SQS_GRADING_TEST_QUEUE_URL` and asserts the
-give-up path by reading `SQS_GRADING_TEST_DLQ_URL`. It must **never** be pointed
-at the production queue.
-
-The two credential outputs are marked `sensitive = true`, so a bare
-`terraform output` redacts them and they will not leak into a CI log. `-raw`
-is the deliberate act of reading one.
-
-### Rotating the key
+Paste them straight into the workflow, or keep them as repo *variables*
+(`gh variable set`, **not** `gh secret set` — they are not secrets) if you'd
+rather not commit the account id:
 
 ```sh
-terraform taint aws_iam_access_key.grading_worker
-terraform apply
-# then re-run the two gh secret set commands above
+gh variable set AWS_ROLE_ARN --body "$(terraform output -raw ci_role_arn)"
+gh variable set AWS_REGION   --body "$(terraform output -raw aws_region)"
 ```
+
+The workflow then needs two things. The `id-token: write` permission is the one
+people forget, and its absence fails with a misleading *"Not authorized to
+perform sts:AssumeRoleWithWebIdentity"* — which reads like a trust-policy
+problem but means the runner never got a token at all:
+
+```yaml
+permissions:
+  id-token: write   # REQUIRED: lets the runner request an OIDC token.
+  contents: read    # checkout
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      # No aws-access-key-id. No aws-secret-access-key. That is the point.
+
+      - run: ./gradlew test --tests '*Sqs*'
+        env:
+          SQS_GRADING_TEST_QUEUE_URL: ${{ vars.SQS_GRADING_TEST_QUEUE_URL }}
+          SQS_GRADING_TEST_DLQ_URL: ${{ vars.SQS_GRADING_TEST_DLQ_URL }}
+```
+
+The contract suite runs against `grading_test_queue_url` and asserts the
+give-up path by reading `grading_test_dlq_url`. It must **never** be pointed at
+the production queue.
+
+> The CI slice owns the actual workflow file. The snippet above is the contract
+> it should implement, not the workflow itself.
+
+### Running the contract suite locally
+
+OIDC only works **from inside a GitHub Actions runner** — GitHub is the only
+thing that can mint the token, so there is no role for you to assume from your
+laptop and nothing worth copying out of CI.
+
+Locally, authenticate as **yourself**, with an identity that already has rights
+to the queues:
+
+```sh
+aws sso login --profile keepup      # or however you normally authenticate
+export AWS_PROFILE=keepup
+export AWS_REGION=eu-west-3
+
+export SQS_GRADING_TEST_QUEUE_URL="$(terraform -chdir=infra/terraform output -raw grading_test_queue_url)"
+export SQS_GRADING_TEST_DLQ_URL="$(terraform -chdir=infra/terraform output -raw grading_test_dlq_url)"
+
+./gradlew test --tests '*Sqs*'
+```
+
+Do **not** mint a shared access key "just for local dev" and pass it around —
+that reintroduces exactly the long-lived credential this design removed. Each
+developer authenticates as themselves.
+
+Note the test queues are **shared**: two people running the suite at the same
+time will steal each other's messages. Coordinate, or point at a private copy.
 
 ---
 
@@ -247,8 +363,8 @@ terraform apply
 |---|---|
 | `backend.tf` | S3 remote state. **Contains a placeholder bucket name you must replace.** |
 | `versions.tf` | Pinned Terraform + AWS provider, default tags. |
-| `variables.tf` | Tunables, with guardrails on the ones that can corrupt grades. |
+| `variables.tf` | Tunables, with guardrails on the two that can cause real damage. |
 | `queues.tf` | The four queues and their redrive policies. |
-| `iam.tf` | The worker user, its ARN-scoped policy, and its access key. |
-| `outputs.tf` | Queue URLs, queue ARNs, credentials (sensitive). |
+| `iam.tf` | The GitHub OIDC provider, the CI role, and its ARN-scoped policy. |
+| `outputs.tf` | Queue URLs, queue ARNs, role ARN. Nothing sensitive. |
 | `terraform.tfvars.example` | Copy to `terraform.tfvars` (git-ignored) to override defaults. |

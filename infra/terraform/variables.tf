@@ -61,6 +61,55 @@ variable "dlq_message_retention_seconds" {
 }
 
 # ---------------------------------------------------------------------------
+# GitHub OIDC federation — the CI identity. See iam.tf.
+# ---------------------------------------------------------------------------
+
+variable "github_repository" {
+  description = <<-EOT
+    The "owner/repo" whose GitHub Actions workflows may assume the CI role.
+    This is the ONLY thing scoping the trust policy: it becomes the OIDC
+    subject condition "repo:<owner>/<repo>:*". Widen it and you hand the role
+    to strangers.
+  EOT
+  type        = string
+  default     = "RoTour/keepup"
+
+  validation {
+    # A "*" here would produce a subject like "repo:*:*", which any repository
+    # on github.com would match. That is the one catastrophic misconfiguration
+    # available in this file, so refuse it at plan time rather than trusting a
+    # code review to catch it.
+    condition     = can(regex("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", var.github_repository))
+    error_message = "github_repository must be exactly \"owner/repo\" with no wildcards: it is the only thing scoping the OIDC trust policy to this repository rather than to all of GitHub."
+  }
+}
+
+variable "create_github_oidc_provider" {
+  description = <<-EOT
+    Whether to create the token.actions.githubusercontent.com OIDC provider.
+
+    An AWS account may hold exactly ONE OIDC provider per URL, so if the
+    account already has one (because some other stack already uses GitHub
+    Actions), creating it again fails the apply with EntityAlreadyExists. In
+    that case set this to false and pass existing_github_oidc_provider_arn.
+
+    README § Bootstrap has the one-line check that tells you which case you are
+    in. Run it before the first apply.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "existing_github_oidc_provider_arn" {
+  description = <<-EOT
+    ARN of the GitHub OIDC provider already registered in this account. Only
+    used — and required — when create_github_oidc_provider is false.
+  EOT
+  type        = string
+  default     = null
+}
+
+# ---------------------------------------------------------------------------
 # CI contract-test queue tuning — deliberately hostile settings, see queues.tf
 # ---------------------------------------------------------------------------
 

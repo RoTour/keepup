@@ -1,15 +1,27 @@
 # Copy to terraform.tfvars and adjust. `.gitignore` refuses *.tfvars and allows
 # only *.tfvars.example, so the real file cannot be committed by accident.
 #
-# NEVER put AWS credentials in here. Terraform reads them from the environment
-# (AWS_PROFILE, or AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY). A tfvars file is
-# ignored by git, not by a stray `git add -f` or a screen share.
+# NEVER put AWS credentials in here. Terraform reads them from your environment
+# (AWS_PROFILE / AWS SSO). A tfvars file is ignored by git, but not by a stray
+# `git add -f` or a screen share.
 #
 # Every variable has a working default; this file exists for the ones you might
 # legitimately want to move.
 
 # aws_region        = "eu-west-3"
 # queue_name_prefix = "keepup-grading"
+
+# --- GitHub OIDC (the CI identity) ---
+# The ONLY thing scoping the trust policy to us rather than to all of GitHub.
+# Must be exactly "owner/repo" — wildcards are rejected at plan time.
+# github_repository = "RoTour/keepup"
+
+# An AWS account may hold only ONE OIDC provider per URL. If
+# token.actions.githubusercontent.com is ALREADY registered in this account,
+# creating it again fails the apply with EntityAlreadyExists. Check first (see
+# README § Bootstrap step 0); if it already exists, flip these two:
+# create_github_oidc_provider       = false
+# existing_github_oidc_provider_arn = "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"
 
 # --- Production queue ---
 # Delivery attempts before a grading job is dead-lettered.

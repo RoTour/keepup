@@ -54,31 +54,31 @@ output "aws_region" {
 }
 
 # ---------------------------------------------------------------------------
-# Credentials.
+# The CI identity.
 #
-# Both are marked sensitive so Terraform will not print them in plan/apply logs
-# or in CI output. Read them deliberately:
+# NOTHING HERE IS SENSITIVE, AND NOTHING HERE NEEDS TO BE.
 #
-#   terraform output -raw grading_worker_access_key_id
-#   terraform output -raw grading_worker_secret_access_key
+# A role ARN is an identifier, not a credential. Knowing it gets you nothing:
+# to assume the role you must present an OIDC token that GitHub only mints for
+# a workflow running in this repository. So the role ARN can be pasted into a
+# public workflow file, logged, and screenshotted with no consequence — which
+# is exactly why the static access key it replaced is gone.
 #
-# Paste straight into GitHub Actions secrets. Do not redirect them to a file —
-# an untracked file today is a committed file after someone runs `git add -A`.
+# There is no `sensitive = true` in this stack any more, because there is no
+# secret in this stack any more.
 # ---------------------------------------------------------------------------
 
-output "grading_worker_access_key_id" {
-  description = "Access key id for the SQS worker IAM user. -> GitHub secret AWS_ACCESS_KEY_ID."
-  value       = aws_iam_access_key.grading_worker.id
-  sensitive   = true
+output "ci_role_arn" {
+  description = "ARN of the role GitHub Actions assumes via OIDC. -> `role-to-assume` in aws-actions/configure-aws-credentials. Not a secret."
+  value       = aws_iam_role.grading_worker.arn
 }
 
-output "grading_worker_secret_access_key" {
-  description = "Secret access key for the SQS worker IAM user. -> GitHub secret AWS_SECRET_ACCESS_KEY."
-  value       = aws_iam_access_key.grading_worker.secret
-  sensitive   = true
+output "github_oidc_provider_arn" {
+  description = "ARN of the GitHub OIDC provider trusted by the CI role — the one this stack created, or the pre-existing one it was pointed at."
+  value       = local.github_oidc_provider_arn
 }
 
-output "grading_worker_user_arn" {
-  description = "ARN of the SQS worker IAM user."
-  value       = aws_iam_user.grading_worker.arn
+output "github_oidc_subject" {
+  description = "The OIDC subject condition the CI role's trust policy accepts. Anything not matching this cannot assume the role."
+  value       = local.github_oidc_subject
 }
