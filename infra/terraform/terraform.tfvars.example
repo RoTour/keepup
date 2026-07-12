@@ -1,0 +1,52 @@
+# Copy to terraform.tfvars and adjust. `.gitignore` refuses *.tfvars and allows
+# only *.tfvars.example, so the real file cannot be committed by accident.
+#
+# NEVER put AWS credentials in here. Terraform reads them from your environment
+# (AWS_PROFILE / AWS SSO). A tfvars file is ignored by git, but not by a stray
+# `git add -f` or a screen share.
+#
+# Every variable has a working default; this file exists for the ones you might
+# legitimately want to move.
+
+# aws_region        = "eu-west-3"
+# queue_name_prefix = "keepup-grading"
+
+# --- GitHub OIDC (the CI identity) ---
+# Fixes the "repo:<owner>/<repo>:" prefix of the trust subject — the thing
+# scoping the role to us rather than to all of GitHub. Must be exactly
+# "owner/repo"; wildcards are rejected at plan time.
+# github_repository = "RoTour/keepup"
+
+# The part of the subject AFTER the repo — narrows trust WITHIN the repo.
+# Default "environment:ci" trusts only a job that declares `environment: ci`.
+# Concrete segments only (e.g. "environment:ci", "ref:refs/heads/master"); a
+# "*" is rejected at plan time. Change this only alongside WORKFLOW §8.
+# github_oidc_subject_suffix = "environment:ci"
+
+# An AWS account may hold only ONE OIDC provider per URL. If
+# token.actions.githubusercontent.com is ALREADY registered in this account,
+# creating it again fails the apply with EntityAlreadyExists. Check first (see
+# README § Bootstrap step 0); if it already exists, flip these two:
+# create_github_oidc_provider       = false
+# existing_github_oidc_provider_arn = "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"
+
+# --- Production queue ---
+# Delivery attempts before a grading job is dead-lettered.
+# max_receive_count = 3
+
+# Visibility timeout, in seconds. READ THE COMMENT IN queues.tf BEFORE TOUCHING
+# THIS. It must comfortably exceed the worst-case LLM grading call (~8s); too
+# low and the same submission is graded twice, concurrently, with two different
+# results. The floor enforced in variables.tf is 60s.
+# visibility_timeout_seconds = 120
+
+# receive_wait_time_seconds     = 20      # long poll, AWS max
+# dlq_message_retention_seconds = 1209600 # 14 days, AWS max
+
+# --- CI contract-test queue ---
+# Short on purpose: they make the "delivery attempts exhausted -> exactly one
+# grading-abandoned outcome" assertion run in ~4s instead of ~6min. Do not copy
+# these onto the production queue.
+# test_visibility_timeout_seconds = 2
+# test_max_receive_count          = 2
+# test_message_retention_seconds  = 300

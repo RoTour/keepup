@@ -5,11 +5,28 @@
 **/application-local.yml
 *.pem
 **/secrets/
-infra/terraform/*.tfstate
-infra/terraform/*.tfstate.*
-infra/terraform/.terraform/
-infra/terraform/*.tfvars
-!infra/terraform/*.tfvars.example
+# unanchored on purpose: a `terraform apply` run from any directory must not be
+# able to drop an un-ignored state file into a public repo
+*.tfstate
+*.tfstate.*
+**/.terraform/
+*.tfvars
+# .tfvars.json is loaded as a variables file exactly like .tfvars, and *.tfvars
+# does not match it (no ".tfvars" suffix), so it needs its own line.
+*.tfvars.json
+# saved plans. A binary plan carries fully-resolved values and every resource
+# attribute — the same account recon map we refuse to publish as state. The
+# common filenames plus the conventional extension.
+tfplan
+plan.out
+*.tfplan
+# terraform crash dumps: the panic trace can quote config and provider state.
+crash.log
+crash.*.log
+# negations LAST so nothing above re-catches these. None of the patterns above
+# match them, but keeping them here makes that invariant obvious.
+!*.tfvars.example
+!**/.terraform.lock.hcl
 
 # build
 build/
