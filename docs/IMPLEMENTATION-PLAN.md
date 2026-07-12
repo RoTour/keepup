@@ -7,7 +7,7 @@
 
 ## How to use this document
 
-1. Read `CONTEXT-MAP.md` and the three glossaries (`docs/contexts/{authoring,delivery,identity}/CONTEXT.md`).
+1. Read `CONTEXT-MAP.md` and the three glossaries (`backend/contexts/{authoring,delivery,identity}/CONTEXT.md`).
 2. Skim the ADR index below; read any ADR in full before building the component it governs.
 3. Execute milestones in order (M0 → M8). Within a milestone, follow the build order given.
 4. Build **one component at a time** using the house cadence (§6). Spec before implementation.
