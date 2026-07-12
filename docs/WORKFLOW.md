@@ -280,14 +280,14 @@ is fine), Gradle **9.6.1**, Spring Boot **4.1.0**, Angular **22**, Postgres **15
 | Slice | What | Base | Wave |
 |---|---|---|---|
 | S0.1 | Gradle skeleton: `settings.gradle.kts` (**all** modules + **all** empty feature packages), `build-logic/` convention plugins (`keepup.java`, `keepup.spring-adapter`, `keepup.archunit`), version catalog, **ArchUnit ruleset live and failing on violations** | staging | **A** ∥ |
-| S0.2 | `infra/docker/compose.dev.yml`: Postgres **15.8**, RabbitMQ 4 + management, one-shot `migrate` service | staging | **A** ∥ |
+| S0.2 | `infra/docker/compose.dev.yml`: Postgres **15.8**, RabbitMQ 4 + management, MailHog. *Backing services only* — the `app` and `migrate` services are added by S0.9, which owns the Dockerfiles they reference | staging | **A** ∥ |
 | S0.4 | Angular 22 workspace + dev proxy + Playwright harness stub | staging | **A** ∥ |
 | S0.6 | Terraform: SQS main + DLQ + redrive, short-visibility test pair, scoped IAM, **S3 state backend** (eu-west-3) | staging | **A** ∥ |
 | S0.7 | ADR-0016…0021 (plan §3/§5/§8, plus **ADR-0021: direct Postgres, never the pooler** — §1.1) | staging | **A** ∥ |
 | S0.3 | Flyway V1: per-context schemas, outbox (`seq bigserial`, payload, `published_at`), projector cursor, Spring Session tables (auto-DDL off) | feat/S0.1 | **B** ∥ |
 | S0.5 | CI: `backend-test`, `frontend-test`, `secrets-scan`, `build-push`, `sqs-contract`, `deploy` (§8) | feat/S0.1 | **B** ∥ |
 | S0.8 | Glossaries move to `backend/contexts/*/CONTEXT.md`; pointers left in `docs/contexts/` | feat/S0.1 | **B** ∥ |
-| S0.9 | `:backend:app` boots: `@OnRole` condition, role gating, actuator health; backend + frontend Dockerfiles (§7) | feat/S0.1 | **B** ∥ |
+| S0.9 | `:backend:app` boots: `@OnRole` condition, role gating, actuator health; a `@SpringBootTest contextLoads` smoke test (deferred from S0.1, which steers around the JUnit 6 / Boot 4.1 TestEngine wiring); backend + frontend Dockerfiles (§7); extends S0.2's compose with the `app` and one-shot `migrate` services | feat/S0.1 | **B** ∥ |
 | S0.10 | **Human-run.** Coolify: staging + prod apps, RabbitMQ container (vhosts `staging`/`prod`), two databases + roles, env vars, deploy webhooks; GitHub branch protection (§3.2) | — | **C** |
 
 Concurrency: 5 agents, then 4. **Demo:** `docker compose up`; boots in all three roles; CI green;
@@ -368,7 +368,10 @@ orchestrator in `:backend:app` · `S6.8` course radar read model + projector · 
 
 `S8.1` outbox pruning + Spring Session cleanup · `S8.2` prod compose hardening (Caddy WebSocket
 upgrade, web ×2) · `S8.3` Postgres backups · `S8.4` login rate limiting · `S8.5` AWS key rotation
-runbook.
+runbook · `S8.6` Gradle dependency-verification metadata (`verification-metadata.xml`, sha256).
+Deferred here on purpose: it is a single shared file that every dependency bump must regenerate, so
+committing it during M1–M7 would serialise every parallel slice that adds a dependency (a §5 hot
+file). Land it once the dependency set has stopped moving.
 
 > M3–M8 are slice *names*, not file manifests, on purpose. **Expand a milestone's slices into full
 > packets at its kickoff, not before** — a file-level ownership map written six milestones early is
@@ -416,6 +419,7 @@ runs.
 |---|---|---|
 | `backend-test` | Gradle build, unit + use-case specs, Testcontainers (PG 15.8, RabbitMQ 4), **ArchUnit** | required |
 | `frontend-test` | `npm ci`, lint, unit, build | required |
+| `raw-html-gate` | Greps `frontend/src` for a **broad** sink set and fails on any hit: `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `bypassSecurityTrust` (the whole family — `Html`/`Script`/`Style`/`Url`/`ResourceUrl`, not just `Html`), `SecurityContext.NONE`, `createContextualFragment`, `DOMParser`, `srcdoc`. **Deliberately not an ESLint rule**: a lint rule is defeatable by a one-line `eslint-disable` comment *and* by AST evasion the rule's selectors don't match (computed member access, aliasing, destructuring) — the PR#3 review proved both. This gate guards Risk #7 — LLM-extracted evidence, quoted verbatim from learner-submitted text, rendered into a trainer's browser. It must not be silenceable from inside the file it guards, and it greps prefixes precisely because an AST allow-list is never complete. The ESLint rule stays as the fast local signal; the grep gate is the wall. The strategic fix — CSP + `require-trusted-types-for 'script'` — lands with the evidence-rendering feature (M3 S3.9 / M4), converting this deny-list into a browser-enforced allow-list. | required |
 | `secrets-scan` | gitleaks over the diff **and** full history | required |
 
 **On `push` → `staging` / `master` (and `workflow_dispatch`):**
@@ -434,6 +438,14 @@ runs.
 run **only on `push` and `workflow_dispatch`, never on `pull_request`**. GitHub already withholds
 secrets from fork PRs, but the rule is written down so nobody later "fixes" the gating by reaching
 for `pull_request_target` — which would hand a fork's code the AWS credentials.
+
+**Contract with S0.6 (AWS OIDC):** the SQS role's trust policy scopes its subject to
+`repo:RoTour/keepup:environment:ci`, not to the whole repo. So **every job that assumes the AWS role
+(`sqs-contract`) MUST declare `environment: ci`** and `permissions: id-token: write` — otherwise the
+minted OIDC token's subject won't match the trust policy and `AssumeRoleWithWebIdentity` fails
+closed. That failure is the safe direction (no access on misconfiguration), but it is also the
+confusing one: it surfaces as a generic "not authorized to perform sts:AssumeRoleWithWebIdentity"
+that reads like a policy bug when it actually means the job forgot its `environment`.
 
 ---
 
