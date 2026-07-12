@@ -16,6 +16,7 @@ on:
     paths:
       - 'frontend/**'
       - 'scripts/check-raw-html.sh'
+      - 'scripts/check-raw-html.test.sh'
       - '.github/workflows/raw-html-gate.yml'
 
 concurrency:
@@ -29,7 +30,15 @@ jobs:
   raw-html-gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Actions are SHA-pinned (supply-chain hardening); the trailing version
+      # comment lets Dependabot bump the pin. Do not replace with a bare tag.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      # Fixture tests pin the gate's guarantees (fail-closed on error, no binary
+      # skip, whitespace evasion caught, documented obfuscation limit). If the
+      # gate is ever weakened, these fail here before the scan even runs.
+      - name: Self-test the gate
+        run: bash scripts/check-raw-html.test.sh
 
       - name: Scan frontend/src for raw-HTML / trust-bypass sinks
         run: bash scripts/check-raw-html.sh frontend/src

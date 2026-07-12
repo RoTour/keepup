@@ -39,10 +39,14 @@ jobs:
       id-token: write        # required to request the OIDC token
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      # Actions are SHA-pinned (supply-chain hardening); the trailing version
+      # comment lets Dependabot bump the pin. This job can mint AWS credentials
+      # via OIDC, so a hijacked action tag is a credential-theft surface -
+      # pinning to a commit removes it.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Configure AWS credentials (OIDC, no long-lived key)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.CI_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
