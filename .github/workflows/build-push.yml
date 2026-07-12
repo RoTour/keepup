@@ -1,0 +1,74 @@
+# build-push - build both container images and push to GHCR.
+#
+# ============================ SECURITY GATE ============================
+# The repo is PUBLIC. This job authenticates to the GitHub Container Registry
+# with a write-scoped token, so it MUST NOT be exposed to untrusted code:
+#   * Triggers on `push` and `workflow_dispatch` ONLY - never `pull_request`.
+#   * NEVER use `pull_request_target`. That runs with the base repo's secrets
+#     but can be tricked into checking out fork code, handing a fork push
+#     access to our registry. Fork PRs already get NO secrets on `pull_request`
+#     by design - do not "fix" a fork build by reaching for pull_request_target.
+# ======================================================================
+#
+# S0.9 owns the Dockerfiles at the paths referenced below; they may not exist on
+# this branch yet. This workflow only names the paths.
+name: build-push
+
+on:
+  push:
+    branches: [staging, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write   # push to GHCR via the built-in GITHUB_TOKEN
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest   # ubuntu-latest is amd64 - no QEMU/emulation needed
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            image: ghcr.io/rotour/keepup-backend
+            dockerfile: infra/docker/Dockerfile.backend
+          - name: frontend
+            image: ghcr.io/rotour/keepup-frontend
+            dockerfile: infra/docker/Dockerfile.frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tags: always the commit <sha>; also `latest` on master.
+      - name: Compute image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ matrix.image }}
+          tags: |
+            type=sha,format=long,prefix=
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+
+      - name: Build and push ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

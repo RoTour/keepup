@@ -1,0 +1,49 @@
+# deploy - trigger a Coolify deploy (scaffold).
+#
+# ============================ SECURITY GATE ============================
+# The repo is PUBLIC. This job uses a deploy secret, so it MUST NOT be exposed
+# to untrusted code:
+#   * Triggers on `push` and `workflow_dispatch` ONLY - never `pull_request`.
+#   * NEVER use `pull_request_target`.
+# ======================================================================
+#
+# STATUS: scaffold only. The webhook URL/token mechanics are an UNRESOLVED open
+# item owned by S0.10 - nothing is hardcoded here. The job is a NO-OP until the
+# COOLIFY_WEBHOOK_URL secret exists: with it unset the deploy step is skipped and
+# the pipeline stays green (an unconfigured deploy must not fail the build).
+#
+# The secret is read into a job env var because the `secrets` context is not
+# available in `if:` conditions; step-level `if:` can read `env`.
+name: deploy
+
+on:
+  push:
+    branches: [staging, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false   # never cancel an in-flight deploy
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      COOLIFY_WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
+    steps:
+      # Real path, active once S0.10 sets the secret. curl -f => non-2xx fails.
+      - name: Trigger Coolify deploy
+        if: ${{ env.COOLIFY_WEBHOOK_URL != '' }}
+        run: |
+          echo "Triggering Coolify deploy for ${{ github.sha }} ..."
+          curl -fsS -X POST "$COOLIFY_WEBHOOK_URL"
+
+      # No-op path while unconfigured. Documents what S0.10 must wire.
+      - name: Deploy not configured (skipping)
+        if: ${{ env.COOLIFY_WEBHOOK_URL == '' }}
+        run: |
+          echo "COOLIFY_WEBHOOK_URL is not set - deploy is a no-op."
+          echo "S0.10 will add the secret and finalise the webhook contract."

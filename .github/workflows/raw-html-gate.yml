@@ -1,0 +1,35 @@
+# raw-html-gate - PR gate against DOM-XSS sinks in the frontend source.
+#
+# This guards the ONE place attacker-controlled, LLM-extracted text can reach a
+# trainer's browser. It is DELIBERATELY a grep (scripts/check-raw-html.sh), not
+# an ESLint rule: a lint rule is silenceable from inside the file it guards (an
+# inline eslint-disable) and dodgeable by AST evasion. The grep cannot be turned
+# off from within the scanned source. See the script header for the full
+# rationale. The same script runs locally: `scripts/check-raw-html.sh`.
+#
+# pull_request only: no credentials.
+name: raw-html-gate
+
+on:
+  pull_request:
+    branches: [staging, master]
+    paths:
+      - 'frontend/**'
+      - 'scripts/check-raw-html.sh'
+      - '.github/workflows/raw-html-gate.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  raw-html-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan frontend/src for raw-HTML / trust-bypass sinks
+        run: bash scripts/check-raw-html.sh frontend/src
