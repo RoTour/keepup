@@ -1,0 +1,31 @@
+# keepup — base configuration for the single Spring Boot artifact.
+#
+# One artifact, three runtime ROLES (web / worker / relay), selected by the
+# KEEPUP_ROLES environment variable. A role is a duty, not an environment, so it
+# is a custom @OnRole condition (see keepup.app.OnRole) — NOT a Spring profile.
+#
+# This app boots WITHOUT a database on purpose: there is no datasource, JPA or
+# Flyway config here. Persistence and migrations arrive in later slices (Flyway
+# config lands in a separate application-migrate.yml). Do not add a datasource here.
+
+server:
+  # The Angular dev proxy forwards /api and /ws to 8080 — keep them in sync.
+  port: 8080
+
+keepup:
+  # Which role(s) this process performs. Comma-separable, e.g. "worker,relay".
+  # Unset defaults to a single web node so a bare `java -jar` boots.
+  roles: ${KEEPUP_ROLES:web}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Health drives container/orchestrator probes; info is cheap and handy.
+        # Nothing else is exposed by default — this is a public build.
+        include: health,info
+  endpoint:
+    health:
+      # Full health details only for authorized callers; anonymous probes still
+      # get UP/DOWN, which is all a liveness/readiness check needs.
+      show-details: when-authorized

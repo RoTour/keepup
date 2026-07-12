@@ -16,5 +16,7 @@ dependencies {
     implementation(project(":backend:platform"))
 
     implementation(libs.spring.boot.starter)
+    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.actuator)
     testImplementation(libs.spring.boot.starter.test)
 }

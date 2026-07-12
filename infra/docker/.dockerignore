@@ -1,0 +1,37 @@
+# Keep secrets and build junk out of the image build context.
+#
+# NOTE ON SCOPE: the backend and frontend builds use the REPOSITORY ROOT as their
+# build context (docker build -f infra/docker/Dockerfile.* .). A .dockerignore is
+# read from the context root, so this file only takes effect for builds whose
+# context is infra/docker itself. The Dockerfiles do not rely on it: each COPYs an
+# explicit allowlist of paths (gradle/build-logic/backend, or frontend sources), so
+# no secret can reach a layer even if a pattern here is missed. This file documents
+# the excluded-inputs contract and trims the context when infra/docker IS the root.
+
+# --- Secrets — never in an image (this repo is public) ----------------------
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/secrets/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+
+# --- Build outputs & caches — never needed in an image ----------------------
+.git
+**/node_modules
+**/dist
+**/.angular
+**/build
+**/.gradle
+**/out-tsc
+**/coverage
+**/playwright-report
+**/test-results
+
+# --- Local noise ------------------------------------------------------------
+**/.DS_Store
+**/*.log
+**/.idea
+**/.vscode
