@@ -1,0 +1,20 @@
+# Build inputs that must never enter the image build context.
+node_modules
+dist
+.angular
+.env*
+
+# Test / tooling output — never needed in an image.
+coverage
+out-tsc
+playwright-report
+test-results
+.nx
+
+# Local noise
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+*.log
