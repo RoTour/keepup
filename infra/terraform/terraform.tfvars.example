@@ -1,0 +1,33 @@
+# Copy to terraform.tfvars and adjust. `.gitignore` refuses *.tfvars and allows
+# only *.tfvars.example, so the real file cannot be committed by accident.
+#
+# NEVER put AWS credentials in here. Terraform reads them from the environment
+# (AWS_PROFILE, or AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY). A tfvars file is
+# ignored by git, not by a stray `git add -f` or a screen share.
+#
+# Every variable has a working default; this file exists for the ones you might
+# legitimately want to move.
+
+# aws_region        = "eu-west-3"
+# queue_name_prefix = "keepup-grading"
+
+# --- Production queue ---
+# Delivery attempts before a grading job is dead-lettered.
+# max_receive_count = 3
+
+# Visibility timeout, in seconds. READ THE COMMENT IN queues.tf BEFORE TOUCHING
+# THIS. It must comfortably exceed the worst-case LLM grading call (~8s); too
+# low and the same submission is graded twice, concurrently, with two different
+# results. The floor enforced in variables.tf is 60s.
+# visibility_timeout_seconds = 120
+
+# receive_wait_time_seconds     = 20      # long poll, AWS max
+# dlq_message_retention_seconds = 1209600 # 14 days, AWS max
+
+# --- CI contract-test queue ---
+# Short on purpose: they make the "delivery attempts exhausted -> exactly one
+# grading-abandoned outcome" assertion run in ~4s instead of ~6min. Do not copy
+# these onto the production queue.
+# test_visibility_timeout_seconds = 2
+# test_max_receive_count          = 2
+# test_message_retention_seconds  = 300
