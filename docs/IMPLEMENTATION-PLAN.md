@@ -411,10 +411,11 @@ The three crossings:
 ## 12. First actions for the implementing session
 
 1. ~~Write ADR-0016…0023 (contents in §2, §3, §5, §8, and `docs/WORKFLOW.md` §1.1).~~ **Done** —
-   slice S0.7. Three points in them are flagged inline as *inferred, not decided* and are open for
-   the product owner: recovery from a mid-registration crash (ADR-0020), whether a session-mode
-   pooler is rejected too (ADR-0021), and whether `RetryAbandonedGradings` is Trainer-triggered only
-   or also swept (ADR-0019).
+   slice S0.7. The three points left open in them have since been decided by the product owner and
+   are recorded in the ADRs themselves: the mid-registration Claim is retried while the browser token
+   lives and no durable claim-intent is built (ADR-0020); the pooler is forbidden in *any* mode,
+   session mode included (ADR-0021); `RetryAbandonedGradings` is Trainer-triggered only, with no
+   automatic sweep (ADR-0019).
 2. Execute M0 in order: Gradle skeleton → compose → Flyway V1 → ArchUnit → Angular workspace →
    CI → glossary relocation.
 3. Begin M1 with `/domain` TrainerAccount.

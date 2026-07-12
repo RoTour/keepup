@@ -2,7 +2,7 @@
 
 The production VPS runs a Supabase stack, and its Postgres is fronted by **Supavisor** in transaction mode on port 6543. It is already running, it is free, and it is connection pooling — the single most tempting misconfiguration available to this project. Host port `5432` maps straight through to the `supabase-db` container, so the direct path exists and costs nothing to take.
 
-**keepup's `DATABASE_URL` always targets Postgres directly: 5432, session mode, for every role — `web`, `worker`, `relay`, `migrate`. Supavisor is forbidden.**
+**keepup's `DATABASE_URL` always targets Postgres directly: 5432, session mode, for every role — `web`, `worker`, `relay`, `migrate`. Supavisor is forbidden, in any mode.**
 
 Two things keepup does require a connection that belongs to it for longer than a single statement, and a transaction-mode pooler destroys both.
 
@@ -16,9 +16,7 @@ Two things keepup does require a connection that belongs to it for longer than a
 
 - **Point everything at Supavisor (6543).** Rejected: the two silent failures above, both discovered at the worst possible moment, neither producing a signal anybody could act on.
 - **Split it — `relay` and `web` go direct, `worker` goes through the pooler.** Rejected, and it is the dangerous option because it is *correct today*. Roles are one environment variable (`KEEPUP_ROLES`), and moving a duty between roles is a supported operation. A per-role exception is a rule that quietly stops being true the first time somebody rebalances the compose file. One rule, no exceptions, is the only rule that survives that.
-- **A session-mode pooler instead of a transaction-mode one.** Rejected: session mode pins a server connection to a client for its whole life, which preserves both behaviours by abandoning the pooling that made a pooler attractive in the first place. It buys nothing over the direct path, and it adds a component that a future operator can flip back into transaction mode without reading this file.
-
-  > **Inferred, not decided — awaiting the product owner.** `docs/WORKFLOW.md` §1.1 forbids Supavisor *in transaction mode* (6543) and observes that host 5432 reaches the container directly. It never discusses a session-mode pooler. This bullet is reasoning added because a future reader will find that port and ask; it is not a rejection anyone actually made.
+- **A session-mode pooler instead of a transaction-mode one.** Rejected, and rejected properly: session mode is *out*, not merely discouraged. It would preserve `LISTEN/NOTIFY` and session-level advisory locks — but only by pinning one server connection to one client for that client's whole life, which is to say by surrendering the pooling that made a pooler attractive in the first place. Nothing is bought over the direct path. What is added is a component sitting in the path that somebody can later flip back into transaction mode, silently breaking the read model, with no error to find. **A rule with no exceptions cannot be misapplied.** That is the entire reason this is absolute.
 - **Move the fan-out onto RabbitMQ so the pooler stops mattering.** Rejected here, and already rejected by ADR-0005 for an entirely independent reason (fan-out on the broker is what would break the SQS adapter). It also does not work: the relay's singleton lock still needs a session, so the pooler is still forbidden and the shortcut has bought nothing.
 
 ## Consequences
